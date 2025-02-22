@@ -6,15 +6,6 @@ from funasr import AutoModel
 from enum import Enum, auto
 import os
 
-# Constants
-RATE = 16000  # Sampling rate (16kHz)
-CHUNK = 9600  # Number of frames per buffer
-CHUNK_SIZE = [0, 10, 4]  # Streaming model chunk size
-ENCODER_CHUNK_LOOK_BACK = 2  # Lookback for encoder self-attention
-DECODER_CHUNK_LOOK_BACK = 0  # Lookback for decoder cross-attention
-DISABLE = True  # Disable logs and progress bars
-
-# Queues
 audio_queue = queue.Queue()  # Raw audio chunks from microphone
 
 
@@ -25,8 +16,15 @@ class State(Enum):
 
 
 class SpeechRecognizer:
-    def __init__(self):
-        """Initialize ASR models and variables."""
+    def __init__(
+        self,
+        RATE=16000,
+        CHUNK=9600,
+        CHUNK_SIZE=[0, 10, 4],
+        ENCODER_CHUNK_LOOK_BACK=2,
+        DECODER_CHUNK_LOOK_BACK=0,
+        DISABLE=True,
+    ):
         self.vad_model = AutoModel(model="fsmn-vad", disable_log=DISABLE, disable_pbar=DISABLE)
         self.online_model = AutoModel(model="paraformer-zh-streaming", disable_log=DISABLE, disable_pbar=DISABLE)
         self.offline_model = AutoModel(
@@ -37,6 +35,13 @@ class SpeechRecognizer:
             disable_log=DISABLE,
             disable_pbar=DISABLE,
         )
+
+        self.RATE = RATE
+        self.CHUNK = CHUNK
+        self.CHUNK_SIZE = CHUNK_SIZE
+        self.ENCODER_CHUNK_LOOK_BACK = ENCODER_CHUNK_LOOK_BACK
+        self.DECODER_CHUNK_LOOK_BACK = DECODER_CHUNK_LOOK_BACK
+
         self.cache = {}
         self.accumulated_speech = []
 
@@ -51,7 +56,6 @@ class SpeechRecognizer:
         self.accumulated_speech_threshold = 50
         self.text_2pass_offline = ""
         self.text_2pass_online = ""
-        self.transcription = ""
 
     def process_audio_chunk(self, audio_data):
         """Process a single audio chunk using VAD and ASR models."""
@@ -68,9 +72,9 @@ class SpeechRecognizer:
                 input=audio_data,
                 cache=self.cache,
                 is_final=False,
-                chunk_size=CHUNK_SIZE,
-                encoder_chunk_look_back=ENCODER_CHUNK_LOOK_BACK,
-                decoder_chunk_look_back=DECODER_CHUNK_LOOK_BACK,
+                chunk_size=self.CHUNK_SIZE,
+                encoder_chunk_look_back=self.ENCODER_CHUNK_LOOK_BACK,
+                decoder_chunk_look_back=self.DECODER_CHUNK_LOOK_BACK,
             )
             self.text_2pass_online += "{}".format(online_res[0]["text"])
             self.accumulated_speech.append(audio_data)
@@ -120,7 +124,6 @@ class SpeechRecognizer:
             self.update_display()
 
     def get_transcription(self):
-        """Return the combined transcription."""
         return self.text_2pass_offline + self.text_2pass_online
 
     # For downstream processing to indicate that task has been completed
@@ -129,20 +132,19 @@ class SpeechRecognizer:
         self.text_2pass_online = ""
 
     def update_display(self):
-        """Update the display with the current transcription."""
-        os.system("clear")
+        # os.system("clear")
         print("Text print:", self.get_transcription())
 
 
 def record_audio():
     """Record audio from the microphone and put chunks into the queue."""
     audio = pyaudio.PyAudio()
-    stream = audio.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True, frames_per_buffer=CHUNK)
+    stream = audio.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=9600)
     print("Recording...")
 
     try:
         while True:
-            audio_data = stream.read(CHUNK)
+            audio_data = stream.read(9600)
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             audio_array = audio_array.astype(np.float32) / 32768.0
             audio_queue.put(audio_array)
