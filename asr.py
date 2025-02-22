@@ -5,6 +5,8 @@ import queue
 from funasr import AutoModel
 from enum import Enum, auto
 import os
+from modelscope.pipelines import pipeline
+
 
 audio_queue = queue.Queue()  # Raw audio chunks from microphone
 
@@ -60,6 +62,10 @@ class SpeechRecognizer:
         self.text_2pass_offline = ""
         self.text_2pass_online = ""
 
+        self.sv_pipeline = pipeline(task="speaker-verification", model="iic/speech_campplus_sv_zh-cn_16k-common")
+        self.initial_speaker = None
+        self.speaker_verified = False
+
     def process_audio_chunk(self, audio_data):
         """Process a single audio chunk using VAD and ASR models."""
         if audio_data is None:
@@ -67,10 +73,11 @@ class SpeechRecognizer:
 
         vad_res = self.vad_model.generate(input=audio_data)
 
-        # Online
-        if len(vad_res[0]["value"]) > 0:
-            self.state = SpeechRecognizerState.ONLINE
+        self.speaker_verified = self.verify_speaker(audio_data)
 
+        user_speaking = len(vad_res[0]["value"]) > 0 and self.speaker_verified
+        # Online
+        if user_speaking:
             online_res = self.online_model.generate(
                 input=audio_data,
                 cache=self.cache,
@@ -81,10 +88,11 @@ class SpeechRecognizer:
             )
             self.text_2pass_online += "{}".format(online_res[0]["text"])
             self.accumulated_speech.append(audio_data)
+            self.state = SpeechRecognizerState.ONLINE
             self.reset_flags()
 
         # Offline
-        if (self.state == SpeechRecognizerState.ONLINE and len(vad_res[0]["value"]) == 0) or len(
+        if (self.state == SpeechRecognizerState.ONLINE and not user_speaking) or len(
             self.accumulated_speech
         ) > self.accumulated_speech_threshold:
             self.is_ending_counter += 1
@@ -92,12 +100,12 @@ class SpeechRecognizer:
                 self.is_ending_counter >= self.is_ending_counter_threshold
                 or len(self.accumulated_speech) > self.accumulated_speech_threshold
             ):
-                self.state = SpeechRecognizerState.OFFLINE
                 self.process_accumulated_speech()
+                self.state = SpeechRecognizerState.OFFLINE
                 self.reset_flags()
 
         # Idle
-        if not self.state == SpeechRecognizerState.IDLE and len(vad_res[0]["value"]) == 0:
+        if not self.state == SpeechRecognizerState.IDLE and not user_speaking:
             self.is_idle_counter += 1
             if self.is_idle_counter >= self.is_idle_counter_threshold:
                 self.state = SpeechRecognizerState.IDLE
@@ -105,9 +113,14 @@ class SpeechRecognizer:
 
     def process_accumulated_speech(self):
         """Process accumulated speech using the offline model."""
-        offline_res = self.offline_model.generate(
-            input=np.concatenate(self.accumulated_speech), batch_size_s=300, batch_size_threshold_s=60
-        )
+        audio_data = np.concatenate(self.accumulated_speech)
+
+        self.speaker_verified = False
+
+        if self.initial_speaker is None:
+            self.initial_speaker = audio_data
+
+        offline_res = self.offline_model.generate(input=audio_data, batch_size_s=300, batch_size_threshold_s=60)
         self.text_2pass_online = ""
         self.text_2pass_offline += "{}".format(offline_res[0]["text"])
 
@@ -116,7 +129,6 @@ class SpeechRecognizer:
             self.is_idle_counter = 0
         elif self.state == SpeechRecognizerState.OFFLINE:
             self.accumulated_speech = []
-            self.state = SpeechRecognizerState.OFFLINE
             self.is_ending_counter = 0
             self.is_idle_counter = 0
             self.cache = {}
@@ -125,6 +137,17 @@ class SpeechRecognizer:
             self.is_ending_counter = 0
             self.is_idle_counter = 0
             self.update_display()
+
+    def verify_speaker(self, audio_data):
+        if self.initial_speaker is None:
+            return True
+
+        else:
+            sv_res = self.sv_pipeline([audio_data, self.initial_speaker])
+            if sv_res["text"] == "yes":
+                return True
+
+        return False
 
     def get_transcription(self):
         return self.text_2pass_offline + self.text_2pass_online

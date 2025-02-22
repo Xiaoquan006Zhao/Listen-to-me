@@ -43,7 +43,7 @@ class PersonalAssistant:
         def llm_thread():
             response_content = ""
             for chunk in self.llm.stream(messages):
-                if self.speechRecognizer.state != SpeechRecognizerState.IDLE:
+                if self.speechRecognizer.state != SpeechRecognizerState.IDLE and self.speechRecognizer.speaker_verified:
                     break
                 with self.print_lock:
                     print(chunk.content, end="")
