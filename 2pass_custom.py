@@ -3,6 +3,7 @@ import numpy as np
 import threading
 import queue
 from funasr import AutoModel
+from enum import Enum, auto
 import os
 
 # Constants
@@ -15,7 +16,12 @@ DISABLE = True  # Disable logs and progress bars
 
 # Queues
 audio_queue = queue.Queue()  # Raw audio chunks from microphone
-offline_audio_queue = queue.Queue()  # Accumulated results for offline model
+
+
+class State(Enum):
+    ONLINE = auto()
+    OFFLINE = auto()
+    IDLE = auto()
 
 
 class SpeechRecognizer:
@@ -33,12 +39,19 @@ class SpeechRecognizer:
         )
         self.cache = {}
         self.accumulated_speech = []
-        self.is_speech_ongoing = False
+
+        self.state = State.IDLE
+
         self.is_ending_counter = 0
-        self.accumulated_speech_threshold = 50
         self.is_ending_counter_threshold = 2
-        self.text_print_2pass_offline = ""
-        self.text_print_2pass_online = ""
+
+        self.is_idle_counter = 0
+        self.is_idle_counter_threshold = 8
+
+        self.accumulated_speech_threshold = 50
+        self.text_2pass_offline = ""
+        self.text_2pass_online = ""
+        self.transcription = ""
 
     def process_audio_chunk(self, audio_data):
         """Process a single audio chunk using VAD and ASR models."""
@@ -46,8 +59,11 @@ class SpeechRecognizer:
             return
 
         vad_res = self.vad_model.generate(input=audio_data)
+
+        # Online
         if len(vad_res[0]["value"]) > 0:
-            self.is_speech_ongoing = True
+            self.state = State.ONLINE
+
             online_res = self.online_model.generate(
                 input=audio_data,
                 cache=self.cache,
@@ -56,13 +72,12 @@ class SpeechRecognizer:
                 encoder_chunk_look_back=ENCODER_CHUNK_LOOK_BACK,
                 decoder_chunk_look_back=DECODER_CHUNK_LOOK_BACK,
             )
-            self.text_print_2pass_online += "{}".format(online_res[0]["text"])
+            self.text_2pass_online += "{}".format(online_res[0]["text"])
             self.accumulated_speech.append(audio_data)
-            self.is_ending_counter = 0
+            self.reset_flags()
 
-            self.update_display()
-
-        if (self.is_speech_ongoing and len(vad_res[0]["value"]) == 0) or len(
+        # Offline
+        if (self.state == State.ONLINE and len(vad_res[0]["value"]) == 0) or len(
             self.accumulated_speech
         ) > self.accumulated_speech_threshold:
             self.is_ending_counter += 1
@@ -70,29 +85,48 @@ class SpeechRecognizer:
                 self.is_ending_counter >= self.is_ending_counter_threshold
                 or len(self.accumulated_speech) > self.accumulated_speech_threshold
             ):
+                self.state = State.OFFLINE
                 self.process_accumulated_speech()
                 self.reset_flags()
 
-                self.update_display()
+        # Idle
+        if not self.state == State.IDLE and len(vad_res[0]["value"]) == 0:
+            self.is_idle_counter += 1
+            if self.is_idle_counter >= self.is_idle_counter_threshold:
+                self.state = State.IDLE
+                self.reset_flags()
 
     def process_accumulated_speech(self):
         """Process accumulated speech using the offline model."""
         offline_res = self.offline_model.generate(
             input=np.concatenate(self.accumulated_speech), batch_size_s=300, batch_size_threshold_s=60
         )
-        self.text_print_2pass_online = ""
-        self.text_print_2pass_offline += "{}".format(offline_res[0]["text"])
+        self.text_2pass_online = ""
+        self.text_2pass_offline += "{}".format(offline_res[0]["text"])
 
     def reset_flags(self):
-        """Reset flags and accumulated speech."""
-        self.accumulated_speech = []
-        self.is_speech_ongoing = False
-        self.is_ending_counter = 0
-        self.cache = {}
+        if self.state == State.IDLE:
+            self.is_idle_counter = 0
+        elif self.state == State.OFFLINE:
+            self.accumulated_speech = []
+            self.state = State.OFFLINE
+            self.is_ending_counter = 0
+            self.is_idle_counter = 0
+            self.cache = {}
+            self.update_display()
+        elif self.state == State.ONLINE:
+            self.is_ending_counter = 0
+            self.is_idle_counter = 0
+            self.update_display()
 
     def get_transcription(self):
         """Return the combined transcription."""
-        return self.text_print_2pass_offline + self.text_print_2pass_online
+        return self.text_2pass_offline + self.text_2pass_online
+
+    # For downstream processing to indicate that task has been completed
+    def reset_external_transcription(self):
+        self.text_2pass_offline = ""
+        self.text_2pass_online = ""
 
     def update_display(self):
         """Update the display with the current transcription."""
