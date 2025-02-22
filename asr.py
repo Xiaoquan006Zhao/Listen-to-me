@@ -9,7 +9,7 @@ import os
 audio_queue = queue.Queue()  # Raw audio chunks from microphone
 
 
-class State(Enum):
+class SpeechRecognizerState(Enum):
     ONLINE = auto()
     OFFLINE = auto()
     IDLE = auto()
@@ -25,8 +25,10 @@ class SpeechRecognizer:
         DECODER_CHUNK_LOOK_BACK=0,
         DISABLE=True,
     ):
-        self.vad_model = AutoModel(model="fsmn-vad", disable_log=DISABLE, disable_pbar=DISABLE)
-        self.online_model = AutoModel(model="paraformer-zh-streaming", disable_log=DISABLE, disable_pbar=DISABLE)
+        self.vad_model = AutoModel(model="fsmn-vad", disable_log=DISABLE, disable_pbar=DISABLE, disable_update=DISABLE)
+        self.online_model = AutoModel(
+            model="paraformer-zh-streaming", disable_log=DISABLE, disable_pbar=DISABLE, disable_update=DISABLE
+        )
         self.offline_model = AutoModel(
             model="paraformer-zh",
             vad_model="fsmn-vad",
@@ -34,6 +36,7 @@ class SpeechRecognizer:
             punc_model="ct-punc",
             disable_log=DISABLE,
             disable_pbar=DISABLE,
+            disable_update=DISABLE,
         )
 
         self.RATE = RATE
@@ -45,7 +48,7 @@ class SpeechRecognizer:
         self.cache = {}
         self.accumulated_speech = []
 
-        self.state = State.IDLE
+        self.state = SpeechRecognizerState.IDLE
 
         self.is_ending_counter = 0
         self.is_ending_counter_threshold = 2
@@ -66,7 +69,7 @@ class SpeechRecognizer:
 
         # Online
         if len(vad_res[0]["value"]) > 0:
-            self.state = State.ONLINE
+            self.state = SpeechRecognizerState.ONLINE
 
             online_res = self.online_model.generate(
                 input=audio_data,
@@ -81,7 +84,7 @@ class SpeechRecognizer:
             self.reset_flags()
 
         # Offline
-        if (self.state == State.ONLINE and len(vad_res[0]["value"]) == 0) or len(
+        if (self.state == SpeechRecognizerState.ONLINE and len(vad_res[0]["value"]) == 0) or len(
             self.accumulated_speech
         ) > self.accumulated_speech_threshold:
             self.is_ending_counter += 1
@@ -89,15 +92,15 @@ class SpeechRecognizer:
                 self.is_ending_counter >= self.is_ending_counter_threshold
                 or len(self.accumulated_speech) > self.accumulated_speech_threshold
             ):
-                self.state = State.OFFLINE
+                self.state = SpeechRecognizerState.OFFLINE
                 self.process_accumulated_speech()
                 self.reset_flags()
 
         # Idle
-        if not self.state == State.IDLE and len(vad_res[0]["value"]) == 0:
+        if not self.state == SpeechRecognizerState.IDLE and len(vad_res[0]["value"]) == 0:
             self.is_idle_counter += 1
             if self.is_idle_counter >= self.is_idle_counter_threshold:
-                self.state = State.IDLE
+                self.state = SpeechRecognizerState.IDLE
                 self.reset_flags()
 
     def process_accumulated_speech(self):
@@ -109,16 +112,16 @@ class SpeechRecognizer:
         self.text_2pass_offline += "{}".format(offline_res[0]["text"])
 
     def reset_flags(self):
-        if self.state == State.IDLE:
+        if self.state == SpeechRecognizerState.IDLE:
             self.is_idle_counter = 0
-        elif self.state == State.OFFLINE:
+        elif self.state == SpeechRecognizerState.OFFLINE:
             self.accumulated_speech = []
-            self.state = State.OFFLINE
+            self.state = SpeechRecognizerState.OFFLINE
             self.is_ending_counter = 0
             self.is_idle_counter = 0
             self.cache = {}
             self.update_display()
-        elif self.state == State.ONLINE:
+        elif self.state == SpeechRecognizerState.ONLINE:
             self.is_ending_counter = 0
             self.is_idle_counter = 0
             self.update_display()
