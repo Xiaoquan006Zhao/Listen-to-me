@@ -36,21 +36,12 @@ def record_audio():
     stream = audio.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True, frames_per_buffer=CHUNK)
     print("Recording...")
 
-    import wave
-    import time
-
     try:
         while True:
             audio_data = stream.read(CHUNK)
             audio_array = np.frombuffer(audio_data, dtype=np.int16)
             audio_array = audio_array.astype(np.float32) / 32768.0
             audio_queue.put(audio_array)
-
-            with wave.open(f"audio_chunk_{int(time.time() * 1000)}.wav", "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(audio.get_sample_size(pyaudio.paInt16))
-                wf.setframerate(RATE)
-                wf.writeframes(b"".join([audio_data]))
 
     except KeyboardInterrupt:
         print("Recording stopped.")
@@ -62,7 +53,7 @@ def record_audio():
 def process_audio():
     is_speech_ongoing = False
     accumulated_speech = []
-    accumulated_speech_threshold = 10
+    accumulated_speech_threshold = 50
     is_ending_counter = 0
     is_ending_counter_threshold = 3
     cache = {}
