@@ -1,9 +1,8 @@
-from asr import SpeechRecognizer, State
-from utils import record_audio
+from asr import SpeechRecognizer, SpeechRecognizerState
 import queue
 import threading
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 
 class PersonalAssistant:
@@ -12,6 +11,8 @@ class PersonalAssistant:
         self.speechRecognizer = SpeechRecognizer()
         self.audio_queue = queue.Queue()
         self.llm = ChatOllama(model="wizardlm2:7b")
+        self.print_lock = threading.Lock()
+        self.chat_history = []  # List to store chat history
 
     def process_audio(self):
         while True:
@@ -23,26 +24,65 @@ class PersonalAssistant:
 
             transcription = self.speechRecognizer.get_transcription().strip()
 
-            print(transcription)
-            if self.speechRecognizer.state == State.IDLE and transcription:
+            if self.speechRecognizer.state == SpeechRecognizerState.IDLE and transcription:
                 print("Processing with LLM...")
                 self.speechRecognizer.reset_external_transcription()
                 self.process_with_llm(transcription)
 
     def process_with_llm(self, transcription):
+        # Add user message to chat history
+        self.chat_history.append(HumanMessage(content=transcription))
+
+        # Prepare messages for LLM (include system message and chat history)
         messages = [
             SystemMessage(content="Answer concisely unless specified."),
-            HumanMessage(content=f"{transcription}"),
+            *self.chat_history,  # Include entire chat history
         ]
 
-        for chunk in self.llm.stream(messages):
-            print(chunk.content, end="")
+        # threading is necessary for state upate to interupt by user speaking
+        def llm_thread():
+            response_content = ""
+            for chunk in self.llm.stream(messages):
+                if self.speechRecognizer.state != SpeechRecognizerState.IDLE:
+                    break
+                with self.print_lock:
+                    print(chunk.content, end="")
+                    response_content += chunk.content
+
+            print()
+            # Add assistant's response to chat history
+            if response_content:
+                self.chat_history.append(AIMessage(content=response_content))
+
+        threading.Thread(target=llm_thread).start()
+
+    def record_audio(self, RATE=16000, CHUNK=9600):
+        import pyaudio
+        import numpy as np
+
+        """Record audio from the microphone and put chunks into the queue."""
+        audio = pyaudio.PyAudio()
+        stream = audio.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True, frames_per_buffer=CHUNK)
+        print("Recording...")
+
+        try:
+            while True:
+                audio_data = stream.read(CHUNK)
+                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                audio_array = audio_array.astype(np.float32) / 32768.0
+                self.audio_queue.put(audio_array)
+
+        except KeyboardInterrupt:
+            print("Recording stopped.")
+        finally:
+            stream.stop_stream()
+            stream.close()
 
 
 def main():
     assistant = PersonalAssistant()
 
-    record_thread = threading.Thread(target=record_audio, args=(assistant.audio_queue,))
+    record_thread = threading.Thread(target=assistant.record_audio)
     record_thread.start()
 
     try:

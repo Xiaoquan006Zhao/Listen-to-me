@@ -24,26 +24,3 @@ def process_hotwords(hotword_file):
             hotword_msg = hotword_file
 
     return hotword_msg
-
-
-def record_audio(audio_queue, RATE=16000, CHUNK=9600):
-    import pyaudio
-    import numpy as np
-
-    """Record audio from the microphone and put chunks into the queue."""
-    audio = pyaudio.PyAudio()
-    stream = audio.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True, frames_per_buffer=CHUNK)
-    print("Recording...")
-
-    try:
-        while True:
-            audio_data = stream.read(CHUNK)
-            audio_array = np.frombuffer(audio_data, dtype=np.int16)
-            audio_array = audio_array.astype(np.float32) / 32768.0
-            audio_queue.put(audio_array)
-
-    except KeyboardInterrupt:
-        print("Recording stopped.")
-    finally:
-        stream.stop_stream()
-        stream.close()
