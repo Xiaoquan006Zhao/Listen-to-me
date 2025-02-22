@@ -2,7 +2,7 @@ from asr import SpeechRecognizer, State
 from utils import record_audio
 import queue
 import threading
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 
 
