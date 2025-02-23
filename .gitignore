@@ -1,3 +1,5 @@
 *.pyc
 sandbox.py
 .DS_Store
+*.wav
+kokoro/

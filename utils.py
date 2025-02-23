@@ -1,5 +1,7 @@
 import os
 import json
+import re
+import string
 
 
 def process_hotwords(hotword_file):
@@ -24,3 +26,14 @@ def process_hotwords(hotword_file):
             hotword_msg = hotword_file
 
     return hotword_msg
+
+
+def post_process_funasr_result(result, remove_punctuation=False):
+    text = result[0]["text"]
+    text = re.sub(r"<\|.*?\|>", "", text)
+
+    if remove_punctuation:
+        punctuation_chars = r"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~。，、；：？！「」『』（）《》【】…—～"
+        text = re.sub(f"[{re.escape(punctuation_chars)}]", "", text)
+
+    return text
