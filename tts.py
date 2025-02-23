@@ -69,14 +69,14 @@ class SpeechGenerator:
             if not self.text_queue.empty():
                 text = self.text_queue.get()
                 await self.generate_speech(text)
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
     async def process_audio_queue(self):
         while not self.stop_event.is_set():
             if not self.audio_queue.empty() and not self.audio_player.is_audio_playing():
                 samples, sample_rate = self.audio_queue.get()
                 self.play_audio(samples, sample_rate)
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
     def add_text_to_queue(self, text):
         self.text_queue.put(text)
@@ -90,15 +90,22 @@ class SpeechGenerator:
         asyncio.run(main())
 
     def interrupt(self):
+        print("Interrupting speech generation...")
         self.clear_queues()
         self.audio_player.stop_audio()
         self.stop_event.set()
+        print("Speech generation interrupted.")
 
     def clear_queues(self):
         while not self.text_queue.empty():
             self.text_queue.get()
         while not self.audio_queue.empty():
             self.audio_queue.get()
+
+    def restart(self):
+        self.clear_queues()
+        self.stop_event.clear()
+        return threading.Thread(target=self.run)
 
 
 # Example usage
