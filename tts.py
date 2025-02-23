@@ -1,13 +1,13 @@
-from kokoro_onnx import Kokoro
 import asyncio
 import queue
-from utils import preprocess_before_generation
 import threading
 import time
 import pygame
 import numpy as np
 import tempfile
 import wave
+from kokoro_onnx import Kokoro
+from utils import preprocess_before_generation
 
 
 class AudioPlayer:
@@ -15,13 +15,13 @@ class AudioPlayer:
         pygame.mixer.init()
 
     def play_np(self, samples, sample_rate):
-        assert self.is_audio_playing() is False
+        if self.is_audio_playing():
+            raise RuntimeError("Audio is already playing")
 
         if samples.ndim == 1:
             samples = np.column_stack((samples, samples))
 
         temp_file = self._save_to_wav(samples, sample_rate)
-
         pygame.mixer.music.load(temp_file)
         pygame.mixer.music.play()
 
@@ -48,76 +48,56 @@ class SpeechGenerator:
         self.kokoro = Kokoro(model_path, voices_path)
         self.audio_queue = queue.Queue()
         self.text_queue = queue.Queue()
-
-        self.audioPlayer = AudioPlayer()
-
+        self.audio_player = AudioPlayer()
         self.stop_event = asyncio.Event()
         self.play_lock = threading.Lock()
 
     def play_audio(self, samples, sample_rate):
-        with self.play_lock:
-            if not self.audioPlayer.is_audio_playing():
-                self.audioPlayer.play_np(samples, sample_rate)
+        assert not self.audio_player.is_audio_playing()
+        self.audio_player.play_np(samples, sample_rate)
 
     async def generate_speech(self, text, voice="am_echo", speed=1.1, lang="en-us"):
         text = preprocess_before_generation(text)
-        print("Generating speech")
-        print(text)
+        print("Generating speech for text:", text)
         stream = self.kokoro.create_stream(text, voice=voice, speed=speed, lang=lang)
 
         async for samples, sample_rate in stream:
             samples = (samples * 32767).astype("int16")
-            print("Playing audio")
             if self.stop_event.is_set():
                 break
             self.audio_queue.put((samples, sample_rate))
 
     async def process_text_queue(self):
-        while True:
-            print("Processing text queue")
-            print("text:", self.text_queue.qsize())
+        while not self.stop_event.is_set():
             if not self.text_queue.empty():
                 text = self.text_queue.get()
-                task = asyncio.create_task(self.generate_speech(text))
-                await task
-                print("Task completed")
-            await asyncio.sleep(2)
-
-    def run_process_text_queue(self):
-        asyncio.run(self.process_text_queue())
+                await self.generate_speech(text)
+            await asyncio.sleep(1)
 
     async def process_audio_queue(self):
-        while True:
-            print("Processing audio queue")
-            print("audio:", self.audio_queue.qsize())
-            if not self.audio_queue.empty() and not self.audioPlayer.is_audio_playing():
-                samples, sample_rate = self.audio_queue.get()
-
-                print("GOTcha")
-                self.play_audio(samples, sample_rate)
-            await asyncio.sleep(2)
-            # time.sleep(2)
-
-    def run_process_audio_queue(self):
-        asyncio.run(self.process_audio_queue())
-        # self.process_audio_queue()
+        while not self.stop_event.is_set():
+            if not self.audio_queue.empty() and not self.audio_player.is_audio_playing():
+                with self.play_lock:
+                    samples, sample_rate = self.audio_queue.get()
+                    self.play_audio(samples, sample_rate)
+            await asyncio.sleep(1)
 
     def add_text_to_queue(self, text):
         self.text_queue.put(text)
 
     def exit_audio(self):
         with self.play_lock:
-            self.audioPlayer.stop_audio()
+            self.audio_player.stop_audio()
         while not self.audio_queue.empty():
             self.audio_queue.get()
 
-    def run_process(self):
-        text_thread = threading.Thread(target=self.run_process_text_queue)
-        audio_thread = threading.Thread(target=self.run_process_audio_queue)
-        text_thread.start()
-        audio_thread.start()
+    def run(self):
+        async def main():
+            text_task = asyncio.create_task(self.process_text_queue())
+            audio_task = asyncio.create_task(self.process_audio_queue())
+            await asyncio.gather(text_task, audio_task)
 
-        return [text_thread, audio_thread]
+        asyncio.run(main())
 
     def set_stop_event(self):
         self.stop_event.set()
@@ -135,24 +115,22 @@ if __name__ == "__main__":
     3. **Mental Health Disorders**: Conditions such as depression, anxiety, bipolar disorder, and post-traumatic stress disorder (PTSD) can include episodes of sadness as a primary symptom.
 
     4. **Chemical Imbalances**: The body's complex system of neurotransmitters, including serotonin and dopamine, can affect mood and lead to feelings of sadness if the balance is off.
-        """
+    """
 
     speech_gen = SpeechGenerator("kokoro/kokoro-v1.0.onnx", "kokoro/voices-v1.0.bin")
-    threads = speech_gen.run_process()
+    speech_thread = threading.Thread(target=speech_gen.run)
+    speech_thread.start()
 
     print("Start Loading")
     time.sleep(5)
 
-    speechBuffer = ""
+    speech_buffer = ""
     for c in text:
-        speechBuffer += c
-        # Buffer until a sentence is complete to generate
-        if len(speechBuffer) > 500 and any(speechBuffer.endswith(p) for p in (".", "!", "?", "\n", "。")):
-            # threading.Thread(target=self.speechGenerator.start_generate_speech, args=(speechBuffer,)).start()
-            speech_gen.add_text_to_queue(speechBuffer)
-            speechBuffer = ""
+        speech_buffer += c
+        if len(speech_buffer) > 500 and any(speech_buffer.endswith(p) for p in (".", "!", "?", "\n", "。")):
+            speech_gen.add_text_to_queue(speech_buffer)
+            speech_buffer = ""
 
     print("Done")
 
-    for thread in threads:
-        thread.join()
+    speech_thread.join()
