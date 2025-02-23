@@ -4,6 +4,7 @@ import queue
 import threading
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+import time
 
 
 class PersonalAssistant:
@@ -86,7 +87,25 @@ class PersonalAssistant:
 
             print("------" * 10)
 
-        threading.Thread(target=llm_thread).start()
+        def llm_finished_speech_ongoing_thread(previous_thread):
+            previous_thread.join()
+            while (
+                not self.speechGenerator.text_queue.empty()
+                or not self.speechGenerator.audio_queue.empty()
+                or self.speechGenerator.audio_player.is_audio_playing()
+                or self.speechGenerator.is_kokoro_running
+            ):
+                if self.speechRecognizer.state != SpeechRecognizerState.IDLE and self.speechRecognizer.speaker_verified:
+                    self.speechGenerator.interrupt()
+                    return
+                time.sleep(0.1)
+
+            self.speechGenerator.interrupt()
+            print("*******" * 10)
+
+        thread = threading.Thread(target=llm_thread)
+        thread.start()
+        threading.Thread(target=llm_finished_speech_ongoing_thread, args=(thread,)).start()
 
     def record_audio(self, RATE=16000, CHUNK=9600):
         import pyaudio

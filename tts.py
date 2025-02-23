@@ -50,6 +50,7 @@ class SpeechGenerator:
         self.text_queue = queue.Queue()
         self.audio_player = AudioPlayer()
         self.stop_event = asyncio.Event()
+        self.is_kokoro_running = False
 
     def play_audio(self, samples, sample_rate):
         self.audio_player.play_np(samples, sample_rate)
@@ -68,7 +69,9 @@ class SpeechGenerator:
         while not self.stop_event.is_set():
             if not self.text_queue.empty():
                 text = self.text_queue.get()
+                self.is_kokoro_running = True
                 await self.generate_speech(text)
+                self.is_kokoro_running = False
             await asyncio.sleep(0.1)
 
     async def process_audio_queue(self):
@@ -90,11 +93,9 @@ class SpeechGenerator:
         asyncio.run(main())
 
     def interrupt(self):
-        print("Interrupting speech generation...")
         self.clear_queues()
         self.audio_player.stop_audio()
         self.stop_event.set()
-        print("Speech generation interrupted.")
 
     def clear_queues(self):
         while not self.text_queue.empty():
