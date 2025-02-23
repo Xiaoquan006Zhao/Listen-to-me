@@ -28,7 +28,7 @@ def process_hotwords(hotword_file):
     return hotword_msg
 
 
-def post_process_funasr_result(result, remove_punctuation=False):
+def postprocess_funasr_result(result, remove_punctuation=False):
     text = result[0]["text"]
     text = re.sub(r"<\|.*?\|>", "", text)
 
@@ -36,4 +36,30 @@ def post_process_funasr_result(result, remove_punctuation=False):
         punctuation_chars = r"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~。，、；：？！「」『』（）《》【】…—～"
         text = re.sub(f"[{re.escape(punctuation_chars)}]", "", text)
 
+    return text
+
+
+def remove_markdown(text):
+    # Remove headers (e.g., #, ##, ###)
+    text = re.sub(r"#{1,6}\s*", "", text)
+    # Remove bold and italic markers (e.g., **bold**, *italic*)
+    text = re.sub(r"\*{1,2}(.*?)\*{1,2}", r"\1", text)
+    text = re.sub(r"_{1,2}(.*?)_{1,2}", r"\1", text)
+    # Remove links (e.g., [text](url))
+    text = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", text)
+    # Remove inline code (e.g., `code`)
+    text = re.sub(r"`(.*?)`", r"\1", text)
+    # Remove block code (e.g., ```code```)
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    # Remove lists (e.g., -, *, 1.)
+    text = re.sub(r"^\s*[\-\*\+]\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\d+\.\s*", "", text, flags=re.MULTILINE)
+    # Remove horizontal rules (e.g., ---, ***)
+    text = re.sub(r"^\s*[\-\*]{3,}\s*$", "", text, flags=re.MULTILINE)
+    return text
+
+
+def preprocess_before_generation(text):
+    text = remove_markdown(text)
+    text = " ".join(text.split())  # Normalize whitespace
     return text
