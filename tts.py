@@ -50,15 +50,12 @@ class SpeechGenerator:
         self.text_queue = queue.Queue()
         self.audio_player = AudioPlayer()
         self.stop_event = asyncio.Event()
-        self.play_lock = threading.Lock()
 
     def play_audio(self, samples, sample_rate):
-        assert not self.audio_player.is_audio_playing()
         self.audio_player.play_np(samples, sample_rate)
 
     async def generate_speech(self, text, voice="am_echo", speed=1.1, lang="en-us"):
         text = preprocess_before_generation(text)
-        print("Generating speech for text:", text)
         stream = self.kokoro.create_stream(text, voice=voice, speed=speed, lang=lang)
 
         async for samples, sample_rate in stream:
@@ -77,19 +74,12 @@ class SpeechGenerator:
     async def process_audio_queue(self):
         while not self.stop_event.is_set():
             if not self.audio_queue.empty() and not self.audio_player.is_audio_playing():
-                with self.play_lock:
-                    samples, sample_rate = self.audio_queue.get()
-                    self.play_audio(samples, sample_rate)
+                samples, sample_rate = self.audio_queue.get()
+                self.play_audio(samples, sample_rate)
             await asyncio.sleep(1)
 
     def add_text_to_queue(self, text):
         self.text_queue.put(text)
-
-    def exit_audio(self):
-        with self.play_lock:
-            self.audio_player.stop_audio()
-        while not self.audio_queue.empty():
-            self.audio_queue.get()
 
     def run(self):
         async def main():
@@ -99,8 +89,16 @@ class SpeechGenerator:
 
         asyncio.run(main())
 
-    def set_stop_event(self):
+    def interrupt(self):
+        self.clear_queues()
+        self.audio_player.stop_audio()
         self.stop_event.set()
+
+    def clear_queues(self):
+        while not self.text_queue.empty():
+            self.text_queue.get()
+        while not self.audio_queue.empty():
+            self.audio_queue.get()
 
 
 # Example usage
@@ -121,16 +119,11 @@ if __name__ == "__main__":
     speech_thread = threading.Thread(target=speech_gen.run)
     speech_thread.start()
 
-    print("Start Loading")
-    time.sleep(5)
-
     speech_buffer = ""
     for c in text:
         speech_buffer += c
-        if len(speech_buffer) > 500 and any(speech_buffer.endswith(p) for p in (".", "!", "?", "\n", "。")):
+        if len(speech_buffer) > 50 and any(speech_buffer.endswith(p) for p in (".", "!", "?", "\n", "。")):
             speech_gen.add_text_to_queue(speech_buffer)
             speech_buffer = ""
-
-    print("Done")
 
     speech_thread.join()
