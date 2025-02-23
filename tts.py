@@ -55,7 +55,7 @@ class SpeechGenerator:
     def play_audio(self, samples, sample_rate):
         self.audio_player.play_np(samples, sample_rate)
 
-    async def generate_speech(self, text, voice="am_echo", speed=1.1, lang="en-us"):
+    async def generate_speech(self, text, voice="am_echo", speed=1.2, lang="en-us"):
         text = preprocess_before_generation(text)
         stream = self.kokoro.create_stream(text, voice=voice, speed=speed, lang=lang)
 

@@ -3,16 +3,17 @@ from tts import SpeechGenerator
 import queue
 import threading
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 import time
+import numpy as np
+import pyaudio
 
 
-# TODO Avoid endless spin loops, use events to coordinate threads
 class PersonalAssistant:
     def __init__(self):
-        """Initialize the personal assistant with ASR and LLM systems."""
-        self.speechRecognizer = SpeechRecognizer()
-        self.speechGenerator = SpeechGenerator("kokoro/kokoro-v1.0.onnx", "kokoro/voices-v1.0.bin")
+        """Initialize the personal assistant with ASR, TTS, and LLM systems."""
+        self.speech_recognizer = SpeechRecognizer()
+        self.speech_generator = SpeechGenerator("kokoro/kokoro-v1.0.onnx", "kokoro/voices-v1.0.bin")
         self.audio_queue = queue.Queue()
         self.llm = ChatOllama(model="wizardlm2:7b")
         self.print_lock = threading.Lock()
@@ -20,67 +21,66 @@ class PersonalAssistant:
         self.threads = []
 
     def process_audio(self):
+        """Process audio chunks from the queue and handle transcription."""
         while True:
             audio_data = self.audio_queue.get()
-            if audio_data is None:
+            if audio_data is None:  # Sentinel value to stop processing
                 break
 
-            self.speechRecognizer.process_audio_chunk(audio_data)
+            self.speech_recognizer.process_audio_chunk(audio_data)
+            transcription = self.speech_recognizer.get_transcription().strip()
 
-            transcription = self.speechRecognizer.get_transcription().strip()
-
-            if self.speechRecognizer.state == SpeechRecognizerState.IDLE and transcription:
+            if self.speech_recognizer.state == SpeechRecognizerState.IDLE and transcription:
                 print("Processing with LLM...")
-                self.speechRecognizer.reset_external_transcription()
+                self.speech_recognizer.reset_external_transcription()
                 self.process_with_llm(transcription)
 
     def process_with_llm(self, transcription):
+        """Process the transcription with the LLM and generate a response."""
         print("------")
-        print("thread count: ", threading.active_count())
+        print("Thread count:", threading.active_count())
         print("------")
 
-        speech_thread = self.speechGenerator.restart()
+        # Restart the speech generation thread
+        speech_thread = self.speech_generator.restart()
         self.threads.append(speech_thread)
         speech_thread.start()
 
+        # Add user input to chat history with instructions
         self.chat_history.append(
             HumanMessage(
-                content=transcription
-                + "Only Answer with English and no other language should be used! And do not use any Markdown. Just use normal English punctuation."
+                content=transcription + " Only answer in English and do not use Markdown. Use normal punctuation."
             )
         )
 
-        # Prepare messages for LLM (include system message and chat history)
-        messages = [
-            # SystemMessage(content="Provide anwers only in English."),
-            *self.chat_history,  # Include entire chat history
-        ]
+        # Prepare messages for LLM (include chat history)
+        messages = [*self.chat_history]
 
-        # threading is necessary for state upate to interupt by user speaking
         def llm_thread():
-            # Buffer to accumulate chunks for more natural speech. Token level speech genration is not good.
-            speechBuffer = ""
+            """Handle streaming LLM responses and generate speech."""
+            speech_buffer = ""
             response_content = ""
-            for chunk in self.llm.stream(messages):
-                # Although the SpeechRecognizerState should already verify the speaker, we check again here
-                if self.speechRecognizer.state != SpeechRecognizerState.IDLE and self.speechRecognizer.speaker_verified:
-                    self.speechGenerator.interrupt()
-                    break
-                speechBuffer += chunk.content
 
-                # Immediately print the chunk
+            for chunk in self.llm.stream(messages):
+                if self.speech_recognizer.state != SpeechRecognizerState.IDLE:
+                    self.speech_generator.interrupt()
+                    break
+
+                speech_buffer += chunk.content
+                response_content += chunk.content
+
+                # Print the chunk immediately
                 with self.print_lock:
                     print(chunk.content, end="")
-                    response_content += chunk.content
 
-                # Buffer until a sentence is complete to generate speech
-                if len(speechBuffer) > 50 and any(speechBuffer.endswith(p) for p in (".", "!", "?", "\n", "。")):
-                    self.speechGenerator.add_text_to_queue(speechBuffer)
-                    speechBuffer = ""
+                # Buffer until a sentence is complete for natural speech generation
+                if len(speech_buffer) > 50 and any(speech_buffer.endswith(p) for p in (".", "!", "?", "\n")):
+                    self.speech_generator.add_text_to_queue(speech_buffer)
+                    speech_buffer = ""
 
             # Process any remaining content in the buffer
-            if speechBuffer and not self.speechGenerator.stop_event.is_set():
-                self.speechGenerator.add_text_to_queue(speechBuffer)
+            if speech_buffer and not self.speech_generator.stop_event.is_set():
+                self.speech_generator.add_text_to_queue(speech_buffer)
 
             print()
             if response_content:
@@ -89,37 +89,37 @@ class PersonalAssistant:
             print("------" * 10)
 
         def llm_finished_speech_ongoing_thread(previous_thread):
+            """Wait for the LLM thread to finish and handle ongoing speech."""
             previous_thread.join()
+
             while (
-                not self.speechGenerator.text_queue.empty()
-                or not self.speechGenerator.audio_queue.empty()
-                or self.speechGenerator.audio_player.is_audio_playing()
-                or self.speechGenerator.is_kokoro_running
+                not self.speech_generator.text_queue.empty()
+                or not self.speech_generator.audio_queue.empty()
+                or self.speech_generator.audio_player.is_audio_playing()
+                or self.speech_generator.is_kokoro_running
             ):
-                if self.speechRecognizer.state != SpeechRecognizerState.IDLE and self.speechRecognizer.speaker_verified:
-                    self.speechGenerator.interrupt()
+                if self.speech_recognizer.state != SpeechRecognizerState.IDLE:
+                    self.speech_generator.interrupt()
                     return
                 time.sleep(0.1)
 
-            self.speechGenerator.interrupt()
+            self.speech_generator.interrupt()
             print("*******" * 10)
 
-        thread = threading.Thread(target=llm_thread)
-        thread.start()
-        threading.Thread(target=llm_finished_speech_ongoing_thread, args=(thread,)).start()
+        # Start LLM and speech monitoring threads
+        llm_thread_instance = threading.Thread(target=llm_thread)
+        llm_thread_instance.start()
+        threading.Thread(target=llm_finished_speech_ongoing_thread, args=(llm_thread_instance,)).start()
 
-    def record_audio(self, RATE=16000, CHUNK=9600):
-        import pyaudio
-        import numpy as np
-
+    def record_audio(self, rate=16000, chunk_size=9600):
         """Record audio from the microphone and put chunks into the queue."""
         audio = pyaudio.PyAudio()
-        stream = audio.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True, frames_per_buffer=CHUNK)
+        stream = audio.open(format=pyaudio.paInt16, channels=1, rate=rate, input=True, frames_per_buffer=chunk_size)
         print("Recording...")
 
         try:
             while True:
-                audio_data = stream.read(CHUNK)
+                audio_data = stream.read(chunk_size)
                 audio_array = np.frombuffer(audio_data, dtype=np.int16)
                 audio_array = audio_array.astype(np.float32) / 32768.0
                 self.audio_queue.put(audio_array)
@@ -129,19 +129,17 @@ class PersonalAssistant:
         finally:
             stream.stop_stream()
             stream.close()
+            audio.terminate()
 
 
 def main():
+    """Main function to initialize and run the personal assistant."""
     assistant = PersonalAssistant()
 
     record_thread = threading.Thread(target=assistant.record_audio)
     assistant.threads.append(record_thread)
+    record_thread.start()
 
-    # speech_thread = threading.Thread(target=assistant.speechGenerator.run)
-    # assistant.threads.append(speech_thread)
-
-    for thread in assistant.threads:
-        thread.start()
     try:
         assistant.process_audio()
     except KeyboardInterrupt:

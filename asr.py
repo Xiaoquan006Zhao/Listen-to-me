@@ -26,6 +26,10 @@ class SpeechRecognizer:
         ENCODER_CHUNK_LOOK_BACK=2,
         DECODER_CHUNK_LOOK_BACK=0,
         DISABLE=True,
+        verify_speaker_threshold=0.35,
+        accumulated_speech_threshold=50,
+        is_ending_counter_threshold=2,
+        is_idle_counter_threshold=8,
     ):
         self.vad_model = AutoModel(model="fsmn-vad", disable_log=DISABLE, disable_pbar=DISABLE, disable_update=DISABLE)
 
@@ -61,12 +65,13 @@ class SpeechRecognizer:
         self.state = SpeechRecognizerState.IDLE
 
         self.is_ending_counter = 0
-        self.is_ending_counter_threshold = 2
+        self.is_ending_counter_threshold = is_ending_counter_threshold
+        self.verify_speaker_threshold = verify_speaker_threshold
 
         self.is_idle_counter = 0
-        self.is_idle_counter_threshold = 8
+        self.is_idle_counter_threshold = is_idle_counter_threshold
 
-        self.accumulated_speech_threshold = 50
+        self.accumulated_speech_threshold = accumulated_speech_threshold
         self.text_2pass_offline = ""
         self.text_2pass_online = ""
 
@@ -162,7 +167,7 @@ class SpeechRecognizer:
             return True
 
         else:
-            sv_res = self.sv_pipeline([audio_data, self.initial_speaker], thr=0.4)
+            sv_res = self.sv_pipeline([audio_data, self.initial_speaker], thr=self.verify_speaker_threshold)
             if sv_res["text"] == "yes":
                 return True
 
