@@ -6,7 +6,7 @@ from funasr import AutoModel
 from enum import Enum, auto
 import os
 from modelscope.pipelines import pipeline
-
+from utils import post_process_funasr_result
 
 audio_queue = queue.Queue()  # Raw audio chunks from microphone
 
@@ -28,18 +28,26 @@ class SpeechRecognizer:
         DISABLE=True,
     ):
         self.vad_model = AutoModel(model="fsmn-vad", disable_log=DISABLE, disable_pbar=DISABLE, disable_update=DISABLE)
-        self.online_model = AutoModel(
-            model="paraformer-zh-streaming", disable_log=DISABLE, disable_pbar=DISABLE, disable_update=DISABLE
-        )
-        self.offline_model = AutoModel(
-            model="paraformer-zh",
+
+        self.online_model = self.offline_model = AutoModel(
+            model="FunAudioLLM/SenseVoiceSmall",
             vad_model="fsmn-vad",
             vad_kwargs={"max_single_segment_time": 60000},
-            punc_model="ct-punc",
+            hub="hf",
             disable_log=DISABLE,
             disable_pbar=DISABLE,
             disable_update=DISABLE,
         )
+
+        # self.offline_model = AutoModel(
+        #     model="FunAudioLLM/SenseVoiceSmall",
+        #     vad_model="fsmn-vad",
+        #     vad_kwargs={"max_single_segment_time": 60000},
+        #     hub="hf",
+        #     disable_log=DISABLE,
+        #     disable_pbar=DISABLE,
+        #     disable_update=DISABLE,
+        # )
 
         self.RATE = RATE
         self.CHUNK = CHUNK
@@ -47,7 +55,7 @@ class SpeechRecognizer:
         self.ENCODER_CHUNK_LOOK_BACK = ENCODER_CHUNK_LOOK_BACK
         self.DECODER_CHUNK_LOOK_BACK = DECODER_CHUNK_LOOK_BACK
 
-        self.cache = {}
+        self.online_cache = {}
         self.accumulated_speech = []
 
         self.state = SpeechRecognizerState.IDLE
@@ -76,17 +84,20 @@ class SpeechRecognizer:
         self.speaker_verified = self.verify_speaker(audio_data)
 
         user_speaking = len(vad_res[0]["value"]) > 0 and self.speaker_verified
+
         # Online
         if user_speaking:
             online_res = self.online_model.generate(
                 input=audio_data,
-                cache=self.cache,
-                is_final=False,
-                chunk_size=self.CHUNK_SIZE,
-                encoder_chunk_look_back=self.ENCODER_CHUNK_LOOK_BACK,
-                decoder_chunk_look_back=self.DECODER_CHUNK_LOOK_BACK,
+                cache=self.online_cache,
+                language="auto",
+                use_itn=True,
+                batch_size_s=60,
+                # merge_vad=True,
+                # merge_length_s=15,
             )
-            self.text_2pass_online += "{}".format(online_res[0]["text"])
+
+            self.text_2pass_online += post_process_funasr_result(online_res, remove_punctuation=True)
             self.accumulated_speech.append(audio_data)
             self.state = SpeechRecognizerState.ONLINE
             self.reset_flags()
@@ -120,9 +131,17 @@ class SpeechRecognizer:
         if self.initial_speaker is None:
             self.initial_speaker = audio_data
 
-        offline_res = self.offline_model.generate(input=audio_data, batch_size_s=300, batch_size_threshold_s=60)
+        offline_res = self.offline_model.generate(
+            input=audio_data,
+            cache={},
+            language="auto",
+            use_itn=True,
+            batch_size_s=60,
+            # merge_vad=True,
+            # merge_length_s=15,
+        )
         self.text_2pass_online = ""
-        self.text_2pass_offline += "{}".format(offline_res[0]["text"])
+        self.text_2pass_offline += post_process_funasr_result(offline_res)
 
     def reset_flags(self):
         if self.state == SpeechRecognizerState.IDLE:
@@ -131,7 +150,7 @@ class SpeechRecognizer:
             self.accumulated_speech = []
             self.is_ending_counter = 0
             self.is_idle_counter = 0
-            self.cache = {}
+            self.online_cache = {}
             self.update_display()
         elif self.state == SpeechRecognizerState.ONLINE:
             self.is_ending_counter = 0
