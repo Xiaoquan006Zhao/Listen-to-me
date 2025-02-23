@@ -14,7 +14,8 @@ class PersonalAssistant:
         self.audio_queue = queue.Queue()
         self.llm = ChatOllama(model="wizardlm2:7b")
         self.print_lock = threading.Lock()
-        self.chat_history = []  # List to store chat history
+        self.chat_history = []
+        self.threads = []
 
     def process_audio(self):
         while True:
@@ -32,8 +33,20 @@ class PersonalAssistant:
                 self.process_with_llm(transcription)
 
     def process_with_llm(self, transcription):
-        # Add user message to chat history
-        self.chat_history.append(HumanMessage(content=transcription + "The answe should only be in English!"))
+        print("------")
+        print("thread count: ", threading.active_count())
+        print("------")
+
+        speech_thread = self.speechGenerator.restart()
+        self.threads.append(speech_thread)
+        speech_thread.start()
+
+        self.chat_history.append(
+            HumanMessage(
+                content=transcription
+                + "Only Answer with English and no other language should be used! And do not use any Markdown. Just use normal English punctuation."
+            )
+        )
 
         # Prepare messages for LLM (include system message and chat history)
         messages = [
@@ -47,7 +60,9 @@ class PersonalAssistant:
             speechBuffer = ""
             response_content = ""
             for chunk in self.llm.stream(messages):
+                # Although the SpeechRecognizerState should already verify the speaker, we check again here
                 if self.speechRecognizer.state != SpeechRecognizerState.IDLE and self.speechRecognizer.speaker_verified:
+                    self.speechGenerator.interrupt()
                     break
                 speechBuffer += chunk.content
 
@@ -57,19 +72,19 @@ class PersonalAssistant:
                     response_content += chunk.content
 
                 # Buffer until a sentence is complete to generate speech
-                if any(speechBuffer.endswith(p) for p in (".", "!", "?", "\n", "。")):
-                    print(speechBuffer)
-                    self.speechGenerator.stream_start(speechBuffer)
+                if len(speechBuffer) > 50 and any(speechBuffer.endswith(p) for p in (".", "!", "?", "\n", "。")):
+                    self.speechGenerator.add_text_to_queue(speechBuffer)
                     speechBuffer = ""
 
             # Process any remaining content in the buffer
-            if speechBuffer:
-                self.speechGenerator.stream_start(speechBuffer)
+            if speechBuffer and not self.speechGenerator.stop_event.is_set():
+                self.speechGenerator.add_text_to_queue(speechBuffer)
 
             print()
-            # Add assistant's response to chat history
             if response_content:
                 self.chat_history.append(AIMessage(content=response_content))
+
+            print("------" * 10)
 
         threading.Thread(target=llm_thread).start()
 
@@ -100,14 +115,20 @@ def main():
     assistant = PersonalAssistant()
 
     record_thread = threading.Thread(target=assistant.record_audio)
-    record_thread.start()
+    assistant.threads.append(record_thread)
 
+    # speech_thread = threading.Thread(target=assistant.speechGenerator.run)
+    # assistant.threads.append(speech_thread)
+
+    for thread in assistant.threads:
+        thread.start()
     try:
         assistant.process_audio()
     except KeyboardInterrupt:
         print("Processing stopped.")
     finally:
-        record_thread.join()
+        for thread in assistant.threads:
+            thread.join()
 
 
 if __name__ == "__main__":
