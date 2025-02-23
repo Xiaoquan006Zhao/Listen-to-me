@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 import time
 
 
+# TODO Avoid endless spin loops, use events to coordinate threads
 class PersonalAssistant:
     def __init__(self):
         """Initialize the personal assistant with ASR and LLM systems."""
