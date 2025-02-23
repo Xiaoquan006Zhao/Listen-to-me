@@ -162,7 +162,7 @@ class SpeechRecognizer:
             return True
 
         else:
-            sv_res = self.sv_pipeline([audio_data, self.initial_speaker], thr=0.6)
+            sv_res = self.sv_pipeline([audio_data, self.initial_speaker], thr=0.4)
             if sv_res["text"] == "yes":
                 return True
 
