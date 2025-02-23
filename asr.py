@@ -6,7 +6,7 @@ from funasr import AutoModel
 from enum import Enum, auto
 import os
 from modelscope.pipelines import pipeline
-from utils import post_process_funasr_result
+from utils import postprocess_funasr_result
 
 audio_queue = queue.Queue()  # Raw audio chunks from microphone
 
@@ -97,7 +97,7 @@ class SpeechRecognizer:
                 # merge_length_s=15,
             )
 
-            self.text_2pass_online += post_process_funasr_result(online_res, remove_punctuation=True)
+            self.text_2pass_online += postprocess_funasr_result(online_res, remove_punctuation=True)
             self.accumulated_speech.append(audio_data)
             self.state = SpeechRecognizerState.ONLINE
             self.reset_flags()
@@ -141,7 +141,7 @@ class SpeechRecognizer:
             # merge_length_s=15,
         )
         self.text_2pass_online = ""
-        self.text_2pass_offline += post_process_funasr_result(offline_res)
+        self.text_2pass_offline += postprocess_funasr_result(offline_res)
 
     def reset_flags(self):
         if self.state == SpeechRecognizerState.IDLE:
@@ -162,7 +162,7 @@ class SpeechRecognizer:
             return True
 
         else:
-            sv_res = self.sv_pipeline([audio_data, self.initial_speaker])
+            sv_res = self.sv_pipeline([audio_data, self.initial_speaker], thr=0.6)
             if sv_res["text"] == "yes":
                 return True
 
