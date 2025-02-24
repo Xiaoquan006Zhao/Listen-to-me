@@ -4,7 +4,6 @@ import queue
 import threading
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage
-import time
 import numpy as np
 import pyaudio
 
@@ -52,17 +51,14 @@ class PersonalAssistant:
                 content=transcription + " Only answer in English and do not use Markdown. Use normal punctuation."
             )
         )
-
-        # Prepare messages for LLM (include chat history)
         messages = [*self.chat_history]
 
         def llm_thread():
-            """Handle streaming LLM responses and generate speech."""
             speech_buffer = ""
             response_content = ""
 
             for chunk in self.llm.stream(messages):
-                if self.speech_recognizer.state != SpeechRecognizerState.IDLE:
+                if self.speech_recognizer.listening_to_user_event.is_set():
                     self.speech_generator.interrupt()
                     break
 
@@ -88,28 +84,26 @@ class PersonalAssistant:
 
             print("------" * 10)
 
-        def llm_finished_speech_ongoing_thread(previous_thread):
-            """Wait for the LLM thread to finish and handle ongoing speech."""
-            previous_thread.join()
-
-            while (
-                not self.speech_generator.text_queue.empty()
-                or not self.speech_generator.audio_queue.empty()
-                or self.speech_generator.audio_player.is_audio_playing()
-                or self.speech_generator.is_kokoro_running
-            ):
-                if self.speech_recognizer.state != SpeechRecognizerState.IDLE:
-                    self.speech_generator.interrupt()
-                    return
-                time.sleep(0.1)
-
+        def listening_for_user_interrupt_thread(previous_llm_thread):
+            previous_llm_thread.join()
+            self.speech_recognizer.listening_to_user_event.wait()
+            print("User interrupting...")
             self.speech_generator.interrupt()
-            print("*******" * 10)
+            print("*****")
+
+        def speech_natural_completion_thread(previous_llm_thread):
+            previous_llm_thread.join()
+            self.speech_generator.task_completed_event.wait()
+            print("Natural completion...")
+            # Not logically ideal, as it's set to stop the listening thread, not to indicate actual user speaking
+            self.speech_recognizer.listening_to_user_event.set()
+            print("*****")
 
         # Start LLM and speech monitoring threads
         llm_thread_instance = threading.Thread(target=llm_thread)
         llm_thread_instance.start()
-        threading.Thread(target=llm_finished_speech_ongoing_thread, args=(llm_thread_instance,)).start()
+        threading.Thread(target=listening_for_user_interrupt_thread, args=(llm_thread_instance,)).start()
+        threading.Thread(target=speech_natural_completion_thread, args=(llm_thread_instance,)).start()
 
     def record_audio(self, rate=16000, chunk_size=9600):
         """Record audio from the microphone and put chunks into the queue."""
