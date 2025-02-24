@@ -22,9 +22,6 @@ class SpeechRecognizer:
         self,
         RATE=16000,
         CHUNK=9600,
-        CHUNK_SIZE=[0, 10, 4],
-        ENCODER_CHUNK_LOOK_BACK=2,
-        DECODER_CHUNK_LOOK_BACK=0,
         DISABLE=True,
         verify_speaker_threshold=0.35,
         accumulated_speech_threshold=50,
@@ -43,30 +40,18 @@ class SpeechRecognizer:
             disable_update=DISABLE,
         )
 
-        # self.offline_model = AutoModel(
-        #     model="FunAudioLLM/SenseVoiceSmall",
-        #     vad_model="fsmn-vad",
-        #     vad_kwargs={"max_single_segment_time": 60000},
-        #     hub="hf",
-        #     disable_log=DISABLE,
-        #     disable_pbar=DISABLE,
-        #     disable_update=DISABLE,
-        # )
-
         self.RATE = RATE
         self.CHUNK = CHUNK
-        self.CHUNK_SIZE = CHUNK_SIZE
-        self.ENCODER_CHUNK_LOOK_BACK = ENCODER_CHUNK_LOOK_BACK
-        self.DECODER_CHUNK_LOOK_BACK = DECODER_CHUNK_LOOK_BACK
 
         self.online_cache = {}
         self.accumulated_speech = []
+
+        self.listening_to_user_event = threading.Event()
 
         self.state = SpeechRecognizerState.IDLE
 
         self.is_ending_counter = 0
         self.is_ending_counter_threshold = is_ending_counter_threshold
-        self.verify_speaker_threshold = verify_speaker_threshold
 
         self.is_idle_counter = 0
         self.is_idle_counter_threshold = is_idle_counter_threshold
@@ -78,6 +63,7 @@ class SpeechRecognizer:
         self.sv_pipeline = pipeline(task="speaker-verification", model="iic/speech_campplus_sv_zh-cn_16k-common")
         self.initial_speaker = None
         self.speaker_verified = False
+        self.verify_speaker_threshold = verify_speaker_threshold
 
     def process_audio_chunk(self, audio_data):
         """Process a single audio chunk using VAD and ASR models."""
@@ -104,8 +90,7 @@ class SpeechRecognizer:
 
             self.text_2pass_online += postprocess_funasr_result(online_res, remove_punctuation=True)
             self.accumulated_speech.append(audio_data)
-            self.state = SpeechRecognizerState.ONLINE
-            self.reset_flags()
+            self.set_state(SpeechRecognizerState.ONLINE)
 
         # Offline
         if (self.state == SpeechRecognizerState.ONLINE and not user_speaking) or len(
@@ -117,15 +102,13 @@ class SpeechRecognizer:
                 or len(self.accumulated_speech) > self.accumulated_speech_threshold
             ):
                 self.process_accumulated_speech()
-                self.state = SpeechRecognizerState.OFFLINE
-                self.reset_flags()
+                self.set_state(SpeechRecognizerState.OFFLINE)
 
         # Idle
         if not self.state == SpeechRecognizerState.IDLE and not user_speaking:
             self.is_idle_counter += 1
             if self.is_idle_counter >= self.is_idle_counter_threshold:
-                self.state = SpeechRecognizerState.IDLE
-                self.reset_flags()
+                self.set_state(SpeechRecognizerState.IDLE)
 
     def process_accumulated_speech(self):
         """Process accumulated speech using the offline model."""
@@ -165,7 +148,6 @@ class SpeechRecognizer:
     def verify_speaker(self, audio_data):
         if self.initial_speaker is None:
             return True
-
         else:
             sv_res = self.sv_pipeline([audio_data, self.initial_speaker], thr=self.verify_speaker_threshold)
             if sv_res["text"] == "yes":
@@ -184,6 +166,14 @@ class SpeechRecognizer:
     def update_display(self):
         # os.system("clear")
         print("Text print:", self.get_transcription())
+
+    def set_state(self, state):
+        self.state = state
+        self.reset_flags()
+        if self.state != SpeechRecognizerState.IDLE:
+            self.listening_to_user_event.set()
+        else:
+            self.listening_to_user_event.clear()
 
 
 def record_audio():
