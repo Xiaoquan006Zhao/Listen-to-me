@@ -69,6 +69,7 @@ class SpeechGenerator:
         self.audio_queue = queue.Queue()
         self.text_queue = queue.Queue()
         self.text_buffer = ""
+        self.text_buffer_threshold = 50
 
         self.stop_event = asyncio.Event()
         self.task_completed_event = threading.Event()
@@ -107,7 +108,8 @@ class SpeechGenerator:
         self.text_buffer += text
         if self.text_buffer:
             if (
-                len(self.text_buffer) > 50 and any(self.text_buffer.endswith(p) for p in (".", "!", "?", "\n"))
+                len(self.text_buffer) > self.text_buffer_threshold
+                and any(self.text_buffer.endswith(p) for p in (".", "!", "?", "\n"))
             ) or not buffered:
                 self.text_queue.put(self.text_buffer)
                 # print("Text added to queue")
@@ -135,7 +137,6 @@ class SpeechGenerator:
             self.interrupt()
 
         if not self.loop:
-            print("Creating new event loop")
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
 

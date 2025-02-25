@@ -176,40 +176,38 @@ class SpeechRecognizer:
             self.listening_to_user_event.clear()
 
 
-def record_audio():
-    """Record audio from the microphone and put chunks into the queue."""
-    audio = pyaudio.PyAudio()
-    stream = audio.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=9600)
-    print("Recording...")
-
-    try:
-        while True:
-            audio_data = stream.read(9600)
-            audio_array = np.frombuffer(audio_data, dtype=np.int16)
-            audio_array = audio_array.astype(np.float32) / 32768.0
-            audio_queue.put(audio_array)
-
-    except KeyboardInterrupt:
-        print("Recording stopped.")
-    finally:
-        stream.stop_stream()
-        stream.close()
-
-
-def process_audio():
-    """Process audio chunks from the queue."""
-    recognizer = SpeechRecognizer()
-
-    while True:
-        audio_data = audio_queue.get()
-        if audio_data is None:
-            break
-
-        recognizer.process_audio_chunk(audio_data)
-        recognizer.update_display()
-
-
 def main():
+    def record_audio():
+        """Record audio from the microphone and put chunks into the queue."""
+        audio = pyaudio.PyAudio()
+        stream = audio.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=9600)
+        print("Recording...")
+
+        try:
+            while True:
+                audio_data = stream.read(9600)
+                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                audio_array = audio_array.astype(np.float32) / 32768.0
+                audio_queue.put(audio_array)
+
+        except KeyboardInterrupt:
+            print("Recording stopped.")
+        finally:
+            stream.stop_stream()
+            stream.close()
+
+    def process_audio():
+        """Process audio chunks from the queue."""
+        recognizer = SpeechRecognizer()
+
+        while True:
+            audio_data = audio_queue.get()
+            if audio_data is None:
+                break
+
+            recognizer.process_audio_chunk(audio_data)
+            recognizer.update_display()
+
     """Main function to start recording and processing threads."""
     record_thread = threading.Thread(target=record_audio)
     record_thread.start()
