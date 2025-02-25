@@ -1,5 +1,6 @@
 from asr import SpeechRecognizer, SpeechRecognizerState
 from tts import SpeechGenerator
+from llm import AnswerGenerator
 import queue
 import threading
 from langchain_ollama import ChatOllama
@@ -14,9 +15,11 @@ class PersonalAssistant:
         self.speech_recognizer = SpeechRecognizer()
         self.speech_generator = SpeechGenerator("kokoro/kokoro-v1.0.onnx", "kokoro/voices-v1.0.bin")
         self.audio_queue = queue.Queue()
-        self.llm = ChatOllama(model="wizardlm2:7b")
+
+        self.answer_generator = AnswerGenerator(model="wizardlm2:7b")
+        self.answer_generator.set_interrupt_event(self.speech_recognizer.listening_to_user_event)
+
         self.print_lock = threading.Lock()
-        self.chat_history = []
         self.threads = []
 
     def process_audio(self):
@@ -45,39 +48,17 @@ class PersonalAssistant:
         self.threads.append(speech_thread)
         speech_thread.start()
 
-        # Add user input to chat history with instructions
-        self.chat_history.append(
-            HumanMessage(
-                content=transcription + " Only answer in English and do not use Markdown. Use normal punctuation."
-            )
-        )
-        messages = [*self.chat_history]
-
         def llm_thread():
-            response_content = ""
-
-            for chunk in self.llm.stream(messages):
-                if self.speech_recognizer.listening_to_user_event.is_set():
-                    self.speech_generator.interrupt()
-                    break
-
-                llm_generted_text = chunk.content
-                response_content += llm_generted_text
-
-                # Print the chunk immediately
+            for token in self.answer_generator.stream_answer(transcription):
                 with self.print_lock:
-                    print(llm_generted_text, end="")
-
-                self.speech_generator.add_text_to_queue(llm_generted_text)
+                    print(token, end="")
+                self.speech_generator.add_text_to_queue(token)
 
             # Process any remaining content in the buffer
             if not self.speech_generator.stop_event.is_set():
                 self.speech_generator.add_text_to_queue("", buffered=False)
 
             print()
-            if response_content:
-                self.chat_history.append(AIMessage(content=response_content))
-
             print("------" * 10)
 
         def listening_for_user_interrupt_thread(previous_llm_thread):
