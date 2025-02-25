@@ -106,13 +106,13 @@ class SpeechGenerator:
 
     def add_text_to_queue(self, text, buffered=True):
         self.text_buffer += text
+
         if self.text_buffer:
             if (
                 len(self.text_buffer) > self.text_buffer_threshold
-                and any(self.text_buffer.endswith(p) for p in (".", "!", "?", "\n"))
+                and any(self.text_buffer.endswith(p) for p in (" ", ",", ":", ";", ".", "!", "?", "\n"))
             ) or not buffered:
                 self.text_queue.put(self.text_buffer)
-                # print("Text added to queue")
                 self.create_task("text_task", self.process_text_queue)
                 self.text_buffer = ""
 
