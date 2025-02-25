@@ -2,6 +2,31 @@ import os
 import json
 import re
 import string
+import pyaudio
+import numpy as np
+
+CHUNK_DURATION = 0.6  # seconds
+SAMPLE_RATE = 16000
+CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION)  # number of samples per chunk
+
+
+def record_audio(audio_queue, rate=SAMPLE_RATE, chunk_size=CHUNK_SIZE):
+    """Record audio from the microphone and put chunks into the queue."""
+    audio = pyaudio.PyAudio()
+    stream = audio.open(format=pyaudio.paInt16, channels=1, rate=rate, input=True, frames_per_buffer=chunk_size)
+    print("Recording...")
+
+    try:
+        while True:
+            audio_data = stream.read(chunk_size)
+            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+            audio_queue.put(audio_array)
+    except KeyboardInterrupt:
+        print("Recording stopped.")
+    finally:
+        stream.stop_stream()
+        stream.close()
+        audio.terminate()
 
 
 def process_hotwords(hotword_file):
