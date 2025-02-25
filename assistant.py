@@ -13,8 +13,9 @@ class PersonalAssistant:
     def __init__(self):
         """Initialize the personal assistant with ASR, TTS, and LLM systems."""
         self.speech_recognizer = SpeechRecognizer()
-        self.speech_generator = SpeechGenerator("kokoro/kokoro-v1.0.onnx", "kokoro/voices-v1.0.bin")
         self.audio_queue = queue.Queue()
+
+        self.speech_generator = SpeechGenerator("kokoro/kokoro-v1.0.onnx", "kokoro/voices-v1.0.bin")
 
         self.answer_generator = AnswerGenerator(model="wizardlm2:7b")
         self.answer_generator.set_interrupt_event(self.speech_recognizer.listening_to_user_event)
@@ -25,14 +26,13 @@ class PersonalAssistant:
     def process_audio(self):
         """Process audio chunks from the queue and handle transcription."""
         while True:
+            # Since queue.get() is a blocking operation, the while loop is not busy-waiting
             audio_data = self.audio_queue.get()
-            if audio_data is None:  # Sentinel value to stop processing
-                break
 
             self.speech_recognizer.process_audio_chunk(audio_data)
             transcription = self.speech_recognizer.get_transcription().strip()
 
-            if self.speech_recognizer.state == SpeechRecognizerState.IDLE and transcription:
+            if transcription and self.speech_recognizer.state == SpeechRecognizerState.IDLE:
                 print("Processing with LLM...")
                 self.speech_recognizer.reset_external_transcription()
                 self.process_with_llm(transcription)
@@ -72,7 +72,7 @@ class PersonalAssistant:
             previous_llm_thread.join()
             self.speech_generator.task_completed_event.wait()
             print("Natural completion...")
-            # Not logically ideal, as it's set to stop the listening thread, not to indicate actual user speaking
+            # Not logically ideal, as it's set to stop the listening_for_user_interrupt_thread thread, not to indicate actual user speaking
             self.speech_recognizer.listening_to_user_event.set()
             print("*****")
 
@@ -82,32 +82,18 @@ class PersonalAssistant:
         threading.Thread(target=listening_for_user_interrupt_thread, args=(llm_thread_instance,)).start()
         threading.Thread(target=speech_natural_completion_thread, args=(llm_thread_instance,)).start()
 
-    def record_audio(self, rate=16000, chunk_size=9600):
-        """Record audio from the microphone and put chunks into the queue."""
-        audio = pyaudio.PyAudio()
-        stream = audio.open(format=pyaudio.paInt16, channels=1, rate=rate, input=True, frames_per_buffer=chunk_size)
-        print("Recording...")
-
-        try:
-            while True:
-                audio_data = stream.read(chunk_size)
-                audio_array = np.frombuffer(audio_data, dtype=np.int16)
-                audio_array = audio_array.astype(np.float32) / 32768.0
-                self.audio_queue.put(audio_array)
-
-        except KeyboardInterrupt:
-            print("Recording stopped.")
-        finally:
-            stream.stop_stream()
-            stream.close()
-            audio.terminate()
+    def run(self):
+        process_audio_thread = threading.Thread(target=self.process_audio)
+        self.threads.append(process_audio_thread)
+        return process_audio_thread
 
 
 def main():
-    """Main function to initialize and run the personal assistant."""
+    from utils import record_audio
+
     assistant = PersonalAssistant()
 
-    record_thread = threading.Thread(target=assistant.record_audio)
+    record_thread = threading.Thread(target=record_audio)
     assistant.threads.append(record_thread)
     record_thread.start()
 
