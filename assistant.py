@@ -54,7 +54,6 @@ class PersonalAssistant:
         messages = [*self.chat_history]
 
         def llm_thread():
-            speech_buffer = ""
             response_content = ""
 
             for chunk in self.llm.stream(messages):
@@ -62,21 +61,18 @@ class PersonalAssistant:
                     self.speech_generator.interrupt()
                     break
 
-                speech_buffer += chunk.content
-                response_content += chunk.content
+                llm_generted_text = chunk.content
+                response_content += llm_generted_text
 
                 # Print the chunk immediately
                 with self.print_lock:
-                    print(chunk.content, end="")
+                    print(llm_generted_text, end="")
 
-                # Buffer until a sentence is complete for natural speech generation
-                if len(speech_buffer) > 50 and any(speech_buffer.endswith(p) for p in (".", "!", "?", "\n")):
-                    self.speech_generator.add_text_to_queue(speech_buffer)
-                    speech_buffer = ""
+                self.speech_generator.add_text_to_queue(llm_generted_text)
 
             # Process any remaining content in the buffer
-            if speech_buffer and not self.speech_generator.stop_event.is_set():
-                self.speech_generator.add_text_to_queue(speech_buffer)
+            if not self.speech_generator.stop_event.is_set():
+                self.speech_generator.add_text_to_queue("", buffered=False)
 
             print()
             if response_content:

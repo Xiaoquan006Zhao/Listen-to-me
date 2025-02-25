@@ -68,6 +68,7 @@ class SpeechGenerator:
 
         self.audio_queue = queue.Queue()
         self.text_queue = queue.Queue()
+        self.text_buffer = ""
 
         self.stop_event = asyncio.Event()
         self.task_completed_event = threading.Event()
@@ -92,6 +93,7 @@ class SpeechGenerator:
 
     async def process_text_queue(self):
         while not self.text_queue.empty() and not self.stop_event.is_set():
+            # print("Processing text queue")
             text = self.text_queue.get()
             await self.generate_speech(text)
 
@@ -101,9 +103,16 @@ class SpeechGenerator:
                 samples, sample_rate = self.audio_queue.get()
                 await self.play_audio(samples, sample_rate)
 
-    def add_text_to_queue(self, text):
-        self.text_queue.put(text)
-        self.create_task("text_task", self.process_text_queue)
+    def add_text_to_queue(self, text, buffered=True):
+        self.text_buffer += text
+        if self.text_buffer:
+            if (
+                len(self.text_buffer) > 50 and any(self.text_buffer.endswith(p) for p in (".", "!", "?", "\n"))
+            ) or not buffered:
+                self.text_queue.put(self.text_buffer)
+                # print("Text added to queue")
+                self.create_task("text_task", self.process_text_queue)
+                self.text_buffer = ""
 
     def create_task(self, task_attr, process_func):
         if self.loop is not None and (getattr(self, task_attr) is None or getattr(self, task_attr).done()):
@@ -126,11 +135,11 @@ class SpeechGenerator:
             self.interrupt()
 
         if not self.loop:
+            print("Creating new event loop")
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
-            self.loop.run_forever()
 
-        asyncio.run_coroutine_threadsafe(main(), self.loop)
+        self.loop.run_until_complete(main())
 
     def interrupt(self):
         self.clear_queues()
@@ -169,11 +178,12 @@ along with him.
     speech_thread = speech_gen.restart()
     speech_thread.start()
 
-    speech_buffer = ""
+    for thread in threading.enumerate():
+        print(thread)
+    print("------")
+
     for c in text:
-        speech_buffer += c
-        if len(speech_buffer) > 5 and any(speech_buffer.endswith(p) for p in (".", "!", "?", "\n", "。")):
-            speech_gen.add_text_to_queue(speech_buffer)
-            speech_buffer = ""
+        speech_gen.add_text_to_queue(c)
+    speech_gen.add_text_to_queue("", buffered=False)
 
     speech_thread.join()
