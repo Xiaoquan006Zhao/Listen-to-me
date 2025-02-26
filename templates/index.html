@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Modern chatbot UI with speech recognition and transcription">
+    <meta name="author" content="Your Name">
+    
+    <!-- Google Font for Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <title>Chatbot UI</title>
+
+    <!-- Your Custom Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="chat-container">
+        <div id="chatHistory" class="chat-history">
+            <!-- Chat history will be dynamically inserted here -->
+        </div>
+
+        <div id="userInputContainer" class="user-input-container">
+            <div id="userInput" class="user-input">
+                <!-- Transcription will be dynamically inserted here -->
+            </div>
+            <div class="controls">
+                <button id="startRecording" class="record-btn">Start Recording</button>
+                <button id="stopRecording" class="record-btn" disabled>Stop Recording</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Your Custom Scripts -->
+    <script type="module" src="{{ url_for('static', filename='websocket.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='recording.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='ui.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>

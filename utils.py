@@ -88,3 +88,8 @@ def preprocess_before_generation(text):
     text = remove_markdown(text)
     text = " ".join(text.split())  # Normalize whitespace
     return text
+
+
+def emit(socketio, event, data):
+    if socketio is not None:
+        socketio.emit(event, data)

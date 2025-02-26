@@ -6,19 +6,22 @@ import threading
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage
 import numpy as np
-import pyaudio
+from utils import emit
 
 
 class PersonalAssistant:
-    def __init__(self):
+    def __init__(self, socketio=None):
         """Initialize the personal assistant with ASR, TTS, and LLM systems."""
-        self.speech_recognizer = SpeechRecognizer()
+        self.speech_recognizer = SpeechRecognizer(socketio=socketio)
         self.audio_queue = queue.Queue()
 
         self.speech_generator = SpeechGenerator("kokoro/kokoro-v1.0.onnx", "kokoro/voices-v1.0.bin")
 
-        self.answer_generator = AnswerGenerator(model="wizardlm2:7b")
+        self.answer_generator = AnswerGenerator(model="wizardlm2:7b", socketio=socketio)
         self.answer_generator.set_interrupt_event(self.speech_recognizer.listening_to_user_event)
+
+        # If a non-terminal client is connect. Emit callback for Flask-SocketIO
+        self.socketio = socketio
 
         self.print_lock = threading.Lock()
         self.threads = []
@@ -34,6 +37,7 @@ class PersonalAssistant:
 
             if transcription and self.speech_recognizer.state == SpeechRecognizerState.IDLE:
                 print("Processing with LLM...")
+                emit(self.socketio, "llm_started", {"started": True})
                 self.speech_recognizer.reset_external_transcription()
                 self.process_with_llm(transcription)
 

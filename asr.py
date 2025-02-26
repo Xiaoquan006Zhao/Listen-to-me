@@ -6,7 +6,7 @@ from funasr import AutoModel
 from enum import Enum, auto
 import os
 from modelscope.pipelines import pipeline
-from utils import postprocess_funasr_result
+from utils import postprocess_funasr_result, emit
 
 audio_queue = queue.Queue()  # Raw audio chunks from microphone
 
@@ -20,6 +20,7 @@ class SpeechRecognizerState(Enum):
 class SpeechRecognizer:
     def __init__(
         self,
+        socketio=None,
         RATE=16000,
         CHUNK=9600,
         DISABLE=True,
@@ -65,6 +66,8 @@ class SpeechRecognizer:
         self.speaker_verified = False
         self.verify_speaker_threshold = verify_speaker_threshold
 
+        self.socketio = socketio
+
     def process_audio_chunk(self, audio_data):
         """Process a single audio chunk using VAD and ASR models."""
         if audio_data is None:
@@ -84,11 +87,12 @@ class SpeechRecognizer:
                 language="auto",
                 use_itn=True,
                 batch_size_s=60,
-                # merge_vad=True,
-                # merge_length_s=15,
             )
 
-            self.text_2pass_online += postprocess_funasr_result(online_res, remove_punctuation=True)
+            online_transcription = postprocess_funasr_result(online_res, remove_punctuation=True)
+            emit(self.socketio, "online_transcription", {"message": online_transcription})
+
+            self.text_2pass_online += online_transcription
             self.accumulated_speech.append(audio_data)
             self.set_state(SpeechRecognizerState.ONLINE)
 
@@ -125,11 +129,13 @@ class SpeechRecognizer:
             language="auto",
             use_itn=True,
             batch_size_s=60,
-            # merge_vad=True,
-            # merge_length_s=15,
         )
+
+        offline_transcription = postprocess_funasr_result(offline_res)
+
         self.text_2pass_online = ""
-        self.text_2pass_offline += postprocess_funasr_result(offline_res)
+        self.text_2pass_offline += offline_transcription
+        emit(self.socketio, "offline_transcription", {"message": offline_transcription})
 
     def reset_flags(self):
         if self.state == SpeechRecognizerState.IDLE:
@@ -162,6 +168,7 @@ class SpeechRecognizer:
     def reset_external_transcription(self):
         self.text_2pass_offline = ""
         self.text_2pass_online = ""
+        emit(self.socketio, "reset_transcription", {"reset": True})
 
     def update_display(self):
         # os.system("clear")
