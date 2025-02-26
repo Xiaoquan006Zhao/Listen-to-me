@@ -1,6 +1,6 @@
 from flask import Flask, render_template
 from flask_socketio import SocketIO
-
+from utils import emit
 from assistant import PersonalAssistant
 import numpy as np
 
@@ -90,6 +90,15 @@ def handle_audio_data(mic_bytes):
     assistant.audio_queue.put(audio_array)
 
     socketio.emit("audio_ack", {"message": "Audio received and processed"})
+
+
+@socketio.on("connect")
+def handle_connect():
+    emit(
+        socketio,
+        "user_idle_counter_threshold",
+        {"threshold": assistant.speech_recognizer.is_idle_counter_threshold},
+    )
 
 
 if __name__ == "__main__":

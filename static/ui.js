@@ -7,6 +7,8 @@ let llmAnswer = ''; // Variable to keep track of the full LLM answer
 
 let onlineTranscription = '';
 let offlineTranscription = '';
+let idleCounterContainer = document.getElementById('idleCounterContainer');
+let maxIdleCounter = 0; // This will be set by the server
 
 function create_user_message(offlineTranscription) {
     let messageElement = document.createElement('div');
@@ -97,3 +99,48 @@ socket.on('llm_answer', function(data) {
     llmMessageDiv.querySelector('.llm-text').textContent = llmAnswer;
     chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight;  // Auto-scroll
 });
+
+
+// Function to create idle counter circles
+function createIdleCounterCircles(maxCounter) {
+    idleCounterContainer.innerHTML = ''; // Clear existing circles
+    for (let i = 0; i < maxCounter; i++) {
+        let circle = document.createElement('div');
+        circle.classList.add('idle-counter-circle');
+        if (i >= maxCounter - 1) {
+            circle.classList.add('inactive'); // Initially, all circles are inactive
+        }
+        idleCounterContainer.appendChild(circle);
+    }
+    updateIdleCounterCircles(maxCounter);
+}
+
+// Update the idle counter circles
+function updateIdleCounterCircles(currentCounter) {
+    let circles = idleCounterContainer.querySelectorAll('.idle-counter-circle');
+    circles.forEach((circle, index) => {
+        if (index < currentCounter) {
+            circle.classList.remove('inactive');
+        } else {
+            circle.classList.add('inactive');
+        }
+    });
+}
+
+// -2 for reaction buffer
+// Event listener for user_idle_counter_threshold
+socket.on('user_idle_counter_threshold', function(data) {
+    maxIdleCounter = data.threshold-2;
+    createIdleCounterCircles(maxIdleCounter);
+});
+
+// Event listener for user_idle_counter
+socket.on('user_idle_counter', function(data) {
+    if (data.counter !== undefined) {
+
+        updateIdleCounterCircles(data.counter-2);
+    }
+});
+
+// maxIdleCounter = 8;
+// createIdleCounterCircles(maxIdleCounter);

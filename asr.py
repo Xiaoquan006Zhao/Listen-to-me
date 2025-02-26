@@ -73,6 +73,8 @@ class SpeechRecognizer:
         if audio_data is None:
             return
 
+        emit(self.socketio, "user_idle_counter", {"counter": self.is_idle_counter_threshold - self.is_idle_counter})
+
         vad_res = self.vad_model.generate(input=audio_data)
 
         self.speaker_verified = self.verify_speaker(audio_data)
