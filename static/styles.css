@@ -111,6 +111,7 @@ body {
     color: #ddd;
     align-self: flex-end;
     border-bottom-right-radius: 4px;
+    white-space: pre-wrap;
 }
 
 /* Jumping Dots Animation */
