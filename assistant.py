@@ -30,9 +30,7 @@ class PersonalAssistant:
         """Process audio chunks from the queue and handle transcription."""
         while True:
             # Since queue.get() is a blocking operation, the while loop is not busy-waiting
-            print("len queue:", self.audio_queue.qsize())
             audio_data = self.audio_queue.get()
-            print("Processing audio chunk...")
 
             self.speech_recognizer.process_audio_chunk(audio_data)
             transcription = self.speech_recognizer.get_transcription().strip()
@@ -47,9 +45,10 @@ class PersonalAssistant:
         """Process the transcription with the LLM and generate a response."""
         for thread in threading.enumerate():
             print(thread)
-        print("Processing with LLM...")
 
         # Start the speech generation thread
+        # Allow playback at client side
+        emit(self.socketio, "listening_to_user", {"listening": False})
         self.speech_generator.start()
 
         def llm_thread():

@@ -7,7 +7,6 @@ import queue
 
 
 class SpeechGenerator:
-
     def __init__(
         self,
         model_path,
@@ -25,14 +24,17 @@ class SpeechGenerator:
         self.interrupt_event = interrupt_event
 
         self.loop = None
+        self.loop_ready = threading.Event()  # New event to signal that the loop is ready
+        self.last_task_event = asyncio.Event()
 
+        # Start the asyncio loop in a dedicated thread.
         def run_loop():
-            if self.loop is None:
-                self.loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self.loop)
-                self.loop.run_forever()
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.loop_ready.set()  # Signal that the loop is ready
+            self.loop.run_forever()
 
-        threading.Thread(target=run_loop).start()
+        threading.Thread(target=run_loop, daemon=True).start()
 
     async def generate_speech(self, text, voice="am_echo", speed=1.3, lang="en-us"):
         text = preprocess_before_generation(text)
@@ -51,10 +53,18 @@ class SpeechGenerator:
             await self.generate_speech(text)
             self.text_queue.task_done()
 
+            if self.last_task_event.is_set() and self.text_queue.empty():
+                break
         self.stop()
 
     def add_text(self, text, buffered=True):
+        # Wait until the event loop is ready.
+        self.loop_ready.wait()
         self.text_buffer += text
+
+        if buffered:
+            self.last_task_event.set()
+
         if self.text_buffer and (
             not buffered or (len(self.text_buffer) >= self.buffer_threshold and self.text_buffer[-1] in " ,:;.!?\n")
         ):
@@ -62,9 +72,14 @@ class SpeechGenerator:
             self.text_buffer = ""
 
     def stop(self):
-        while not self.text_queue.empty():
-            self.text_queue.get()
+        # Use get_nowait() to clear the queue without awaiting.
+        try:
+            while True:
+                self.text_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
         self.text_buffer = ""
 
     def start(self):
+        self.last_task_event.clear()
         asyncio.run_coroutine_threadsafe(self.process_queue(), self.loop)

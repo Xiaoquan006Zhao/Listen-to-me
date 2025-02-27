@@ -182,4 +182,3 @@ class SpeechRecognizer:
             emit(self.socketio, "listening_to_user", {"listening": True})
         else:
             self.listening_to_user_event.clear()
-            emit(self.socketio, "listening_to_user", {"listening": False})
