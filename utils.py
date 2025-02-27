@@ -94,3 +94,14 @@ def emit(socketio, event, data):
     if socketio is not None:
         # print(f"Emitting event: {event} with data: {data}")
         socketio.emit(event, data)
+
+
+def extract_language_code(s):
+    pattern = r"<\|([^|]+)\|>"
+
+    match = re.match(pattern, s)
+    if match:
+        language = match.group(1)
+        return language
+
+    raise RuntimeError("No language code found in the string.")

@@ -73,7 +73,6 @@ if __name__ == "__main__":
     assistant = PersonalAssistant()
     process_audio_thread = assistant.run()
     process_audio_thread.start()
-
     threading.Thread(target=record_audio, args=(assistant.audio_queue,)).start()
 
     process_audio_thread.join()

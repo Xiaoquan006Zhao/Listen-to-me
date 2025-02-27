@@ -6,7 +6,7 @@ from funasr import AutoModel
 from enum import Enum, auto
 import os
 from modelscope.pipelines import pipeline
-from utils import postprocess_funasr_result, emit
+from utils import postprocess_funasr_result, emit, extract_language_code
 
 audio_queue = queue.Queue()  # Raw audio chunks from microphone
 
@@ -67,6 +67,7 @@ class SpeechRecognizer:
         self.verify_speaker_threshold = verify_speaker_threshold
 
         self.socketio = socketio
+        self.current_language = None
 
     def process_audio_chunk(self, audio_data):
         """Process a single audio chunk using VAD and ASR models."""
@@ -86,7 +87,7 @@ class SpeechRecognizer:
             online_res = self.online_model.generate(
                 input=audio_data,
                 cache=self.online_cache,
-                language="auto",
+                language=self.current_language if self.current_language is not None else "auto",
                 use_itn=True,
                 batch_size_s=60,
             )
@@ -131,6 +132,7 @@ class SpeechRecognizer:
             batch_size_s=60,
         )
 
+        self.current_language = extract_language_code(offline_res[0]["text"])
         offline_transcription = postprocess_funasr_result(offline_res)
 
         self.text_2pass_online = ""
