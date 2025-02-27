@@ -1,4 +1,5 @@
 import { socket } from './websocket.js';
+import {resetInterruptedable} from './ui.js';
 
 let audioQueue = [];
 let isPlaying = false;
@@ -13,6 +14,7 @@ socket.on("listening_to_user", (data) => {
     if (data.listening) {
         console.log("Stopping playback due to user listening");
         stopPlayback = true;
+        resetInterruptedable();
         audioQueue = []; // Clear the queue
         if (currentSource) {
             currentSource.stop();
@@ -59,6 +61,7 @@ function decodeBase64Audio(base64String, sampleRate) {
 function playQueue() {
     if (audioQueue.length === 0 || stopPlayback) {
         isPlaying = false;
+        resetInterruptedable();
         return;
     }
 
@@ -86,5 +89,3 @@ function playQueue() {
     currentSource = source;
     source.start();
 }
-
-export { isPlaying };
