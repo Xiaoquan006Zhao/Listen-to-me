@@ -119,9 +119,7 @@ class SpeechRecognizer:
     def process_accumulated_speech(self):
         """Process accumulated speech using the offline model."""
         audio_data = np.concatenate(self.accumulated_speech)
-
         self.speaker_verified = False
-
         if self.initial_speaker is None:
             self.initial_speaker = audio_data
 
@@ -158,6 +156,7 @@ class SpeechRecognizer:
             return True
         else:
             sv_res = self.sv_pipeline([audio_data, self.initial_speaker], thr=self.verify_speaker_threshold)
+            print("Speaker verification result:", sv_res)
             if sv_res["text"] == "yes":
                 return True
 
@@ -173,7 +172,6 @@ class SpeechRecognizer:
         emit(self.socketio, "reset_transcription", {"reset": True})
 
     def update_display(self):
-        # os.system("clear")
         print("Text print:", self.get_transcription())
 
     def set_state(self, state):
@@ -181,54 +179,7 @@ class SpeechRecognizer:
         self.reset_flags()
         if self.state != SpeechRecognizerState.IDLE:
             self.listening_to_user_event.set()
+            emit(self.socketio, "listening_to_user", {"listening": True})
         else:
             self.listening_to_user_event.clear()
-
-
-def main():
-    def record_audio():
-        """Record audio from the microphone and put chunks into the queue."""
-        audio = pyaudio.PyAudio()
-        stream = audio.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=9600)
-        print("Recording...")
-
-        try:
-            while True:
-                audio_data = stream.read(9600)
-                audio_array = np.frombuffer(audio_data, dtype=np.int16)
-                audio_array = audio_array.astype(np.float32) / 32768.0
-                audio_queue.put(audio_array)
-
-        except KeyboardInterrupt:
-            print("Recording stopped.")
-        finally:
-            stream.stop_stream()
-            stream.close()
-
-    def process_audio():
-        """Process audio chunks from the queue."""
-        recognizer = SpeechRecognizer()
-
-        while True:
-            audio_data = audio_queue.get()
-            if audio_data is None:
-                break
-
-            recognizer.process_audio_chunk(audio_data)
-            recognizer.update_display()
-
-    """Main function to start recording and processing threads."""
-    record_thread = threading.Thread(target=record_audio)
-    record_thread.start()
-
-    try:
-        process_audio()
-    except KeyboardInterrupt:
-        print("Processing stopped.")
-    finally:
-        audio_queue.put(None)
-        record_thread.join()
-
-
-if __name__ == "__main__":
-    main()
+            emit(self.socketio, "listening_to_user", {"listening": False})

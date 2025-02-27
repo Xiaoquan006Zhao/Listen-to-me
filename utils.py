@@ -92,5 +92,5 @@ def preprocess_before_generation(text):
 
 def emit(socketio, event, data):
     if socketio is not None:
-        print(f"Emitting event: {event} with data: {data}")
+        # print(f"Emitting event: {event} with data: {data}")
         socketio.emit(event, data)
