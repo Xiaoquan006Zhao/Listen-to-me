@@ -86,3 +86,5 @@ function playQueue() {
     currentSource = source;
     source.start();
 }
+
+export { isPlaying };

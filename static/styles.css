@@ -161,3 +161,13 @@ body {
     background-color: #444; /* Inactive circle color */
     opacity: 0.2;
 }
+
+@keyframes flashAnimation {
+  0% { background-color: transparent; }
+  50% { background-color: #ffeb3b; }
+  100% { background-color: transparent; }
+}
+
+.flash {
+  animation: flashAnimation 0.5s ease-in-out;
+}

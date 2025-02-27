@@ -1,4 +1,5 @@
 import { socket } from './websocket.js';
+import {  isPlaying } from './playback.js';
 
 let chatHistoryDiv = document.getElementById('chatHistory');
 let userInputDiv = document.getElementById('userInput');
@@ -9,6 +10,9 @@ let onlineTranscription = '';
 let offlineTranscription = '';
 let idleCounterContainer = document.getElementById('idleCounterContainer');
 let maxIdleCounter = 0; // This will be set by the server
+
+let interrupted = false; 
+let llmFinished = false; 
 
 function create_user_message(offlineTranscription) {
     let messageElement = document.createElement('div');
@@ -42,9 +46,33 @@ function create_llm_message() {
     return { messageElement, textElement, dotsContainer };
 }
 
+function flashLLMText() {
+    const llmTextElement = llmMessageDiv.querySelector('.llm-text');
+    if (llmTextElement) {
+        llmTextElement.classList.add('flash');
+        // Remove the flash class after the animation duration (500ms)
+        setTimeout(() => {
+            llmTextElement.classList.remove('flash');
+        }, 500);
+    }
+}
+
+
+
+socket.on('listening_to_user', function(data) {
+    // Dont interrupt again
+    if (data.listening && !interrupted && (!llmFinished || isPlaying)) {
+        interrupted = true; 
+        flashLLMText();
+    }
+});
+
+
 // llm started means user finished speaking
 socket.on('llm_started', function(data) {
     if (data.started) {
+        interrupted = false;
+        llmFinished = false; 
         let userMessageElement = create_user_message(offlineTranscription);
         chatHistoryDiv.appendChild(userMessageElement);
         chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight;  // Auto-scroll
@@ -68,6 +96,7 @@ socket.on('llm_started', function(data) {
 
 socket.on('llm_stopped', function(data) {
     if (data.stopped) {
+        llmFinished = true;
         // Clear dots and update the LLM answer
         llmMessageDiv.removeChild(llmMessageDiv.querySelector('.jumping-dots'));
         llmMessageDiv.querySelector('.llm-text').textContent = llmAnswer; 
