@@ -14,6 +14,8 @@ Install the dependency listed in the requirements.txt.
 
 Download [kokoro-v1.0.onnx](https://github.com/thewh1teagle/kokoro-onnx?tab=readme-ov-file#:~:text=Download%20the%20files-,kokoro%2Dv1.0.onnx,-%2C%20and%20voices%2Dv1.0) and [voices-v1.0.bin](https://github.com/thewh1teagle/kokoro-onnx?tab=readme-ov-file#:~:text=onnx%2C%20and-,voices%2Dv1.0.bin,-and%20place%20them) and place them under a folder named kokoro.
 
+Have Ollama running locally by ``` Ollama serve ```
+
 Run ``` app.py ``` (it may take some time to load up all the models) then visit ``` localhost:8080 ```
 
 ## Speech-to-Text
