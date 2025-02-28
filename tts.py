@@ -54,7 +54,9 @@ class SpeechGenerator:
             self.text_queue.task_done()
 
             if self.last_task_event.is_set() and self.text_queue.empty():
+                emit(self.socketio, "all_speech_sent", {"all_sent": True})
                 break
+
         self.stop()
 
     def add_text(self, text, buffered=True):

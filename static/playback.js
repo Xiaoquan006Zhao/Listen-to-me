@@ -5,6 +5,7 @@ let audioQueue = [];
 let isPlaying = false;
 let stopPlayback = false;
 let currentSource = null;
+let stopWhenDone = false;
 
 // Create a persistent AudioContext
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -23,7 +24,14 @@ socket.on("listening_to_user", (data) => {
     } else {
         console.log("Resuming playback");
         stopPlayback = false;
+        stopWhenDone = false;
     }
+});
+
+socket.on("all_speech_sent", (data) => {
+    if (data.all_sent) {
+        stopWhenDone = true;
+    } 
 });
 
 // Handle incoming audio stream
@@ -59,7 +67,7 @@ function decodeBase64Audio(base64String, sampleRate) {
 
 // Function to play queued audio
 function playQueue() {
-    if (audioQueue.length === 0 || stopPlayback) {
+    if ((audioQueue.length == 0 && stopWhenDone) || stopPlayback) {
         isPlaying = false;
         resetInterruptedable();
         return;
