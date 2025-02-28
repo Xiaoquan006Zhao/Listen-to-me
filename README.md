@@ -5,6 +5,15 @@ It has three major components: Speech-to-Text, LLM, Text-to-Speech.
 
 ## Demo
 
+
+https://github.com/user-attachments/assets/5b97c5ec-90bb-4460-af84-786a8bd11aa9
+
+
+## Try it
+install the dependency listed in the requirements.txt. 
+Download [kokoro-v1.0.onnx](https://github.com/thewh1teagle/kokoro-onnx?tab=readme-ov-file#:~:text=Download%20the%20files-,kokoro%2Dv1.0.onnx,-%2C%20and%20voices%2Dv1.0) and [voices-v1.0.bin](https://github.com/thewh1teagle/kokoro-onnx?tab=readme-ov-file#:~:text=onnx%2C%20and-,voices%2Dv1.0.bin,-and%20place%20them) and place them under a folder named kokoro.
+Run ``` app.py ``` (it may take some time to load up all the models) then visit ``` localhost:8080 ```
+
 ## Speech-to-Text
 Currently is powered by FunASR's SenseVoiceSmall model (it has more language options). 
 Every 0.6s the model process the current audio chunk and as a responsive cue to indicate that the user input is successfully processed (we denote this as the online process). 
@@ -21,4 +30,4 @@ When the interaction is purely text form, humans can just skip a few lines. If t
 This is also the main purpose of this project to be able to interrupt the assistant at any time.
 
 ## Text-to-Speech
-Currently is powered by kokoro. 
+The LLM generated response is then sent to Text-to-speech to generate audio. This part is currently powered by kokoro. 
