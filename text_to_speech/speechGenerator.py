@@ -1,21 +1,20 @@
 import asyncio
 import threading
 import base64
-from kokoro_onnx import Kokoro
 from utils import preprocess_before_generation, emit
-import queue
+from text_to_speech.ttsInterface import ITTSModel
 
 
 class SpeechGenerator:
     def __init__(
         self,
-        model_path,
-        voices_path,
+        model: ITTSModel,
         interrupt_event,
         socketio=None,
         buffer_threshold=50,
     ):
-        self.kokoro = Kokoro(model_path, voices_path)
+        self.model = model
+
         self.socketio = socketio
         self.buffer_threshold = buffer_threshold
 
@@ -36,9 +35,11 @@ class SpeechGenerator:
 
         threading.Thread(target=run_loop, daemon=True).start()
 
-    async def generate_speech(self, text, voice="am_echo", speed=1.3, lang="en-us"):
+    async def generate_speech(self, text):
         text = preprocess_before_generation(text)
-        stream = self.kokoro.create_stream(text, voice=voice, speed=speed, lang=lang)
+
+        stream = self.model.synthesize(text)
+
         async for samples, sample_rate in stream:
             if self.interrupt_event.is_set():
                 break

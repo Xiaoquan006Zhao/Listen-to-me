@@ -1,29 +1,26 @@
-from asr import SpeechRecognizer, SpeechRecognizerState
-from tts import SpeechGenerator
+from speech_to_text.speechRecognizer import SpeechRecognizer, SpeechRecognizerState
+from text_to_speech.speechGenerator import SpeechGenerator
 from llm import AnswerGenerator
 import queue
 import threading
-from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, AIMessage
-import numpy as np
-from utils import emit, record_audio
+from utils import emit
 
 
-class PersonalAssistant:
-    def __init__(self, socketio=None):
+class VoiceAssistant:
+    def __init__(
+        self,
+        speech_recognizer: SpeechRecognizer,
+        speech_generator: SpeechGenerator,
+        answer_generator: AnswerGenerator,
+        socketio=None,
+    ):
         """Initialize the personal assistant with ASR, TTS, and LLM systems."""
-        self.speech_recognizer = SpeechRecognizer(socketio=socketio)
-        interrupt_event = self.speech_recognizer.listening_to_user_event
-
-        self.speech_generator = SpeechGenerator(
-            "kokoro/kokoro-v1.0.onnx", "kokoro/voices-v1.0.bin", interrupt_event=interrupt_event, socketio=socketio
-        )
-        self.answer_generator = AnswerGenerator(
-            model="wizardlm2:7b", socketio=socketio, interrupt_event=interrupt_event
-        )
+        self.speech_recognizer = speech_recognizer
+        self.speech_generator = speech_generator
+        self.answer_generator = answer_generator
+        self.socketio = socketio
 
         self.audio_queue = queue.Queue()
-        self.socketio = socketio
         self.threads = []
 
     def process_audio(self):
@@ -67,12 +64,3 @@ class PersonalAssistant:
         process_audio_thread = threading.Thread(target=self.process_audio)
         self.threads.append(process_audio_thread)
         return process_audio_thread
-
-
-if __name__ == "__main__":
-    assistant = PersonalAssistant()
-    process_audio_thread = assistant.run()
-    process_audio_thread.start()
-    threading.Thread(target=record_audio, args=(assistant.audio_queue,)).start()
-
-    process_audio_thread.join()
