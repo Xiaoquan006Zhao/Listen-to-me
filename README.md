@@ -7,7 +7,11 @@ It has three major components: Speech-to-Text, LLM, Text-to-Speech.
 
 
 
-https://github.com/user-attachments/assets/b2b8bffd-53e5-43fc-9284-79ac2a4a1ea2
+
+https://github.com/user-attachments/assets/a8fbdae8-8db8-411c-bf74-7e1a0d957c2e
+
+
+
 
 
 
