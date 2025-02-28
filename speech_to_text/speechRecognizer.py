@@ -18,13 +18,14 @@ class SpeechRecognizerState(Enum):
 
 
 class SpeechRecognizer:
+
     def __init__(
         self,
         vad_model: IVADModel,
         online_model: IOnlineTranscriptionModel = None,
         offline_model: IOfflineTranscriptionModel = None,
         unified_model: IUnifiedTranscriptionModel = None,
-        speaker_verifier: IVerificationModel = None,
+        sv_model: IVerificationModel = None,
         socketio=None,
         RATE=16000,
         CHUNK=9600,
@@ -58,7 +59,7 @@ class SpeechRecognizer:
         self.text_2pass_offline = ""
         self.text_2pass_online = ""
 
-        self.speaker_verifier = speaker_verifier
+        self.sv_model = sv_model
         self.initial_speaker = None
 
         self.accumulated_speech = []
@@ -71,7 +72,7 @@ class SpeechRecognizer:
         if audio_data is None:
             return
         emit(self.socketio, "user_idle_counter", {"counter": self.is_idle_counter_threshold - self.is_idle_counter})
-        user_speaking = self.vad_model.detect(audio_data) and self.speaker_verifier.verify(audio_data)
+        user_speaking = self.vad_model.detect(audio_data) and self.sv_model.verify(audio_data)
 
         # Online
         if user_speaking:
@@ -94,7 +95,7 @@ class SpeechRecognizer:
             ):
                 audio_data = np.concatenate(self.accumulated_speech)
 
-                self.speaker_verifier.set_initial_reference(audio_data)
+                self.sv_model.set_initial_reference(audio_data)
 
                 offline_transcription = self.offline_model.offline_transcribe(audio_data)
                 self.text_2pass_online = ""

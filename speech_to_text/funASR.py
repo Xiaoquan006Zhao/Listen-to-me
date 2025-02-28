@@ -16,10 +16,8 @@ class FunASRVAD(IVADModel):
         self.model = AutoModel(model=model_name, disable_log=disable, disable_pbar=disable, disable_update=disable)
 
     def detect(self, audio_data):
-        print("detecting speech")
         # Return True if speech is detected, False otherwise
         vad_res = self.model.generate(input=audio_data)
-        print(len(vad_res[0]["value"]) > 0)
         return len(vad_res[0]["value"]) > 0
 
 
@@ -40,7 +38,6 @@ class FunASRUnifiedTranscription(IUnifiedTranscriptionModel):
         self.online_cache = {}
 
     def online_transcribe(self, audio_data):
-        print("online transcribe")
         online_res = self.model.generate(
             input=audio_data,
             cache=self.online_cache,
@@ -52,7 +49,6 @@ class FunASRUnifiedTranscription(IUnifiedTranscriptionModel):
         return postprocess_funasr_result(online_res, remove_punctuation=True)
 
     def offline_transcribe(self, audio_data):
-        print("offline transcribe")
         offline_res = self.model.generate(
             input=audio_data,
             cache={},
@@ -79,12 +75,10 @@ class FunASRSpeakerVerification(IVerificationModel):
         self.threshold = threshold
 
     def verify(self, audio_data):
-        print("verifying speaker")
         if self.reference_audio is None:
             return True
 
         result = self.pipeline([audio_data, self.reference_audio], thr=self.threshold)
-        print("Verification result:", result)
         return result.get("text", "").lower() == "yes"
 
     def set_initial_reference(self, reference_audio):

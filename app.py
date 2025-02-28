@@ -20,9 +20,9 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # speech to text
 vad_model = FunASRVAD(model_name="fsmn-vad")
 unified_model = FunASRUnifiedTranscription(model_name="FunAudioLLM/SenseVoiceSmall")
-speaker_verifier = FunASRSpeakerVerification(model_name="iic/speech_campplus_sv_zh-cn_16k-common")
+sv_model = FunASRSpeakerVerification(model_name="iic/speech_campplus_sv_zh-cn_16k-common")
 speech_recognizer = SpeechRecognizer(
-    vad_model=vad_model, unified_model=unified_model, speaker_verifier=speaker_verifier, socketio=socketio
+    vad_model=vad_model, unified_model=unified_model, sv_model=sv_model, socketio=socketio
 )
 interrupt_event = speech_recognizer.listening_to_user_event
 
