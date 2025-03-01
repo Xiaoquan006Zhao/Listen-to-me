@@ -1,4 +1,4 @@
-# Stop Yapping 
+# Listen-to-me
 Is a voice assistant that you can interrupt any time. It has near real-time responsiveness on Mac M2-pro. 
 
 It has three major components: Speech-to-Text, LLM, Text-to-Speech.
